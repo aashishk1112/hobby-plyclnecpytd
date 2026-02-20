@@ -1,0 +1,167 @@
+import asyncio
+import json
+import logging
+import os
+import time
+import httpx
+from trader import TradeExecutor
+
+logging.basicConfig(level=logging.INFO)
+logger = logging.getLogger(__name__)
+
+class PolymarketTracker:
+    def __init__(self, tracked_addresses: list, trade_history: list, stats: dict = None, category_filters: list = None):
+        self.tracked_addresses = [addr.lower() for addr in tracked_addresses]
+        self.trade_history = trade_history
+        self.stats = stats if stats is not None else {"balance": 100.0}
+        self.category_filters = category_filters if category_filters is not None else []
+        self.running = False
+        self.trader = TradeExecutor()
+        self.seen_trade_hashes = set()
+        self.api_url = "https://data-api.polymarket.com/trades"
+
+    async def start(self):
+        self.running = True
+        logger.info("Polymarket Tracker started (Production Mode)")
+        
+        # Initial poll to populate seen_trade_hashes
+        await self.monitor_loop(initial=True)
+        
+        while self.running:
+            await self.monitor_loop()
+            await asyncio.sleep(10) # Reduced to 10s for better responsiveness
+
+    async def monitor_loop(self, initial=False):
+        """
+        Poll for new trades from tracked addresses using Polymarket Data API.
+        """
+        # Copy list to avoid modification issues during iteration
+        addresses_to_check = list(self.tracked_addresses)
+        
+        async with httpx.AsyncClient(timeout=10.0) as client:
+            for address in addresses_to_check:
+                try:
+                    logger.debug(f"Polling real trades for {address}...")
+                    
+                    params = {
+                        "taker": address,
+                        "limit": 5
+                    }
+                    
+                    response = await client.get(self.api_url, params=params)
+                    if response.status_code != 200:
+                        logger.error(f"Failed to fetch trades for {address}: {response.status_code}")
+                        continue
+                        
+                    trades = response.json()
+                    if not isinstance(trades, list):
+                        continue
+                        
+                    for trade in trades:
+                        tx_hash = trade.get("transactionHash")
+                        if not tx_hash:
+                            continue
+                        
+                        market_title = trade.get("title", "Unknown Market").lower()
+                        
+                        # If this is a new trade (not seen before)
+                        if tx_hash in self.seen_trade_hashes:
+                            logger.debug(f"DEBUG: Skipping already seen trade {tx_hash}")
+                            continue
+
+                        self.seen_trade_hashes.add(tx_hash)
+                            
+                        # Apply category filter for execution only (not for initial seen population)
+                        matching_filter = "All"
+                        if self.category_filters:
+                            market_slug = trade.get("slug", "").lower()
+                            title_lower = market_title.lower()
+                            matched_cat = None
+                            
+                            # Smart mapping for broad categories
+                            SMART_MAPPING = {
+                                "crypto": ["bitcoin", "btc", "eth", "ethereum", "solana", "sol", "crypto", "blockchain", "memecoin"],
+                                "politics": ["trump", "biden", "harris", "election", "politics", "white house", "senate", "republican", "democrat"],
+                                "sports": ["nba", "nfl", "soccer", "mlb", "tennis", "f1", "sports", "basketball", "football"],
+                                "entertainment": ["oscars", "grammys", "movie", "celebrity", "entertainment", "hollywood"]
+                            }
+
+                            for cat in self.category_filters:
+                                cat_lower = cat.lower()
+                                # Check direct match
+                                if cat_lower in title_lower or cat_lower in market_slug:
+                                    matched_cat = cat
+                                    break
+                                
+                                # Check smart mapping
+                                if cat_lower in SMART_MAPPING:
+                                    if any(keyword in title_lower or keyword in market_slug for keyword in SMART_MAPPING[cat_lower]):
+                                        matched_cat = cat
+                                        break
+                            
+                            if not matched_cat:
+                                logger.info(f"FILTER: Skipping trade '{market_title}' (No match for active filters: {self.category_filters})")
+                                continue
+                            matching_filter = matched_cat
+
+                        # Don't execute paper trades on initial historical fetch
+                        if not initial:
+                            logger.info(f"REAL trade detected for {address} in {trade.get('title')}!")
+                            
+                            side = trade.get("side", "BUY")
+                            market_title = trade.get("title", "Unknown Market")
+                            price = float(trade.get("price", 0))
+                            amount = float(trade.get("size", 0))
+                            total_cost = amount * price
+                            timestamp_sec = trade.get("timestamp")
+                            
+                            formatted_time = time.strftime("%H:%M:%S", time.localtime(timestamp_sec)) if timestamp_sec else time.strftime("%H:%M:%S")
+                            
+                            # Update paper balance
+                            if side == "BUY":
+                                self.stats["balance"] -= total_cost
+                            else:
+                                self.stats["balance"] += total_cost
+
+                            trade_data = {
+                                "id": tx_hash,
+                                "timestamp": formatted_time,
+                                "wallet": address,
+                                "market": market_title,
+                                "side": side,
+                                "amount": amount,
+                                "price": price,
+                                "total_cost": total_cost,
+                                "status": "executed",
+                                "category": matching_filter
+                            }
+                            
+                            # Execute paper trade replication
+                            await self.trader.execute_trade(
+                                token_id=trade.get("asset", "UNKNOWN"),
+                                side=side,
+                                amount=amount,
+                                price=price
+                            )
+                            
+                            # Record in history for UI
+                            self.trade_history.insert(0, trade_data)
+                            if len(self.trade_history) > 50:
+                                self.trade_history.pop()
+                    
+                except Exception as e:
+                    logger.error(f"Error polling {address}: {str(e)}", exc_info=True)
+
+    def clear_cache(self):
+        """Reset the seen trade cache to allow re-detecting recent items."""
+        self.seen_trade_hashes.clear()
+        logger.info("Tracker seen_trade_hashes cache cleared")
+
+    def stop(self):
+        self.running = False
+        logger.info("Polymarket Tracker stopped")
+
+if __name__ == "__main__":
+    # Test tracking with an empty list or specific address
+    tracker = PolymarketTracker([], [])
+    asyncio.run(tracker.start())
