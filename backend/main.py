@@ -51,16 +51,40 @@ async def root():
 async def get_config():
     return {
         "tracked_wallets": tracker.tracked_addresses,
+        "disabled_wallets": list(tracker.disabled_addresses),
         "paper_trading": os.getenv("PAPER_TRADING", "True") == "True",
-        "stats": stats,
-        "filters": category_filters
+        "stats": tracker.stats,
+        "filters": category_filters,
+        "balance_history": tracker.balance_history
     }
+
+@app.post("/config/update")
+async def update_config(initial_balance: float = None):
+    if initial_balance is not None:
+        tracker.stats["initial_balance"] = initial_balance
+        # If no trades yet, reset current balance too
+        if not trade_history:
+            tracker.stats["balance"] = initial_balance
+        logger.info(f"Updated initial balance to: {initial_balance}")
+    return {"stats": tracker.stats}
+
+@app.post("/wallets/toggle")
+async def toggle_wallet(address: str):
+    address = address.lower()
+    if address in tracker.disabled_addresses:
+        tracker.disabled_addresses.remove(address)
+        status = "enabled"
+    else:
+        tracker.disabled_addresses.add(address)
+        status = "disabled"
+    logger.info(f"Wallet {address} is now {status}")
+    return {"address": address, "status": status, "disabled_wallets": list(tracker.disabled_addresses)}
 
 @app.post("/trades/clear")
 async def clear_trades():
     trade_history.clear()
-    stats["balance"] = stats["initial_balance"]
-    tracker.clear_cache()
+    tracker.stats["balance"] = tracker.stats["initial_balance"]
+    await tracker.clear_cache()
     logger.info("Cleared all trade history, reset balance, and cleared tracker cache")
     return {"message": "Trade history cleared and tracker reset"}
 
@@ -126,6 +150,28 @@ async def remove_wallet(address: str):
         logger.info(f"Stopped monitoring wallet: {address}")
         return {"message": f"Removed wallet {address}", "wallets": tracker.tracked_addresses}
     return {"message": "Wallet not found", "wallets": tracker.tracked_addresses}
+
+@app.get("/profiles/{address}")
+async def get_profile(address: str):
+    """Proxy to fetch Polymarket user profile data."""
+    try:
+        async with httpx.AsyncClient(timeout=5.0) as client:
+            # Polymarket Gamma API for public profiles
+            response = await client.get(f"https://gamma-api.polymarket.com/public-profile?address={address}")
+            if response.status_code == 200:
+                data = response.json()
+                return {
+                    "username": data.get("name"),
+                    "displayName": data.get("pseudonym"),
+                    "bio": data.get("bio"),
+                    "proxyWallet": data.get("proxyWallet"),
+                    "image": data.get("profileImage")
+                }
+            else:
+                return {}
+    except Exception as e:
+        logger.error(f"Error fetching profile for {address}: {e}")
+        return {}
 
 @app.get("/trades")
 async def get_trades():

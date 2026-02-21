@@ -12,9 +12,11 @@ logger = logging.getLogger(__name__)
 class PolymarketTracker:
     def __init__(self, tracked_addresses: list, trade_history: list, stats: dict = None, category_filters: list = None):
         self.tracked_addresses = [addr.lower() for addr in tracked_addresses]
+        self.disabled_addresses = set() # Addresses to skip during monitoring
         self.trade_history = trade_history
-        self.stats = stats if stats is not None else {"balance": 100.0}
+        self.stats = stats if stats is not None else {"balance": 100.0, "initial_balance": 100.0}
         self.category_filters = category_filters if category_filters is not None else []
+        self.balance_history = [{"timestamp": time.time(), "balance": self.stats["balance"]}]
         self.running = False
         self.trader = TradeExecutor()
         self.seen_trade_hashes = set()
@@ -35,8 +37,8 @@ class PolymarketTracker:
         """
         Poll for new trades from tracked addresses using Polymarket Data API.
         """
-        # Copy list to avoid modification issues during iteration
-        addresses_to_check = list(self.tracked_addresses)
+        # Copy list and filter out disabled addresses
+        addresses_to_check = [addr for addr in self.tracked_addresses if addr not in self.disabled_addresses]
         
         async with httpx.AsyncClient(timeout=10.0) as client:
             for address in addresses_to_check:
@@ -146,15 +148,22 @@ class PolymarketTracker:
                             
                             # Record in history for UI
                             self.trade_history.insert(0, trade_data)
+                            
+                            # Add to balance history for chart
+                            self.balance_history.append({"timestamp": time.time(), "balance": self.stats["balance"]})
+                            if len(self.balance_history) > 100:
+                                self.balance_history.pop(0)
+
                             if len(self.trade_history) > 50:
                                 self.trade_history.pop()
                     
                 except Exception as e:
                     logger.error(f"Error polling {address}: {str(e)}", exc_info=True)
 
-    def clear_cache(self):
+    async def clear_cache(self):
         """Reset the seen trade cache to allow re-detecting recent items."""
         self.seen_trade_hashes.clear()
+        self.balance_history = [{"timestamp": time.time(), "balance": self.stats["balance"]}]
         logger.info("Tracker seen_trade_hashes cache cleared")
 
     def stop(self):

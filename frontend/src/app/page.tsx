@@ -1,25 +1,53 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useMemo } from "react";
+import { motion, Reorder, AnimatePresence } from "framer-motion";
 
 const BACKEND_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8001";
+
+// Vision UI High-Fidelity Icons
+const Icons = {
+    Dashboard: () => <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round"><rect x="3" y="3" width="7" height="7" rx="1" /><rect x="14" y="3" width="7" height="7" rx="1" /><rect x="14" y="14" width="7" height="7" rx="1" /><rect x="3" y="14" width="7" height="7" rx="1" /></svg>,
+    Fleet: () => <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round"><path d="M12 2L2 7l10 5 10-5-10-5zM2 17l10 5 10-5M2 12l10 5 10-5" /></svg>,
+    Matrix: () => <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round"><path d="M16 21V5a2 2 0 00-2-2H5a2 2 0 00-2 2v16" /><path d="M21 21V9a2 2 0 00-2-2h-5M3 7h9M3 11h9M3 15h9" /><rect x="11" y="20" width="2" height="2" rx="0.5" /></svg>,
+    Strategy: () => <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="12" r="3" /><path d="M19.4 15a1.65 1.65 0 00.33 1.82l.06.06a2 2 0 010 2.83 2 2 0 01-2.83 0l-.06-.06a1.65 1.65 0 00-1.82-.33 1.65 1.65 0 00-1 1.51V21a2 2 0 01-2 2 2 2 0 01-2-2v-.09A1.65 1.65 0 009 19.4a1.65 1.65 0 00-1.82.33l-.06.06a2 2 0 01-2.83 0 2 2 0 010-2.83l.06-.06a1.65 1.65 0 00.33-1.82 1.65 1.65 0 00-1.51-1H3a2 2 0 01-2-2 2 2 0 012-2h.09A1.65 1.65 0 004.6 9a1.65 1.65 0 00-.33-1.82l-.06-.06a2 2 0 010-2.83 2 2 0 012.83 0l.06.06a1.65 1.65 0 001.82.33H9a1.65 1.65 0 001-1.51V3a2 2 0 012-2 2 2 2 0 012 2v.09a1.65 1.65 0 001 1.51 1.65 1.65 0 001.82-.33l.06-.06a2 2 0 012.83 0 2 2 0 010 2.83l-.06.06a1.65 1.65 0 00-.33 1.82V9a1.65 1.65 0 001.51 1H21a2 2 0 012 2 2 2 0 01-2 2h-.09a1.65 1.65 0 00-1.51 1z" /></svg>,
+    Search: () => <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><circle cx="11" cy="11" r="8" /><path d="m21 21-4.3-4.3" /></svg>,
+    Notifications: () => <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M18 8A6 6 0 006 8c0 7-3 9-3 9h18s-3-2-3-9M13.73 21a2 2 0 01-3.46 0" /></svg>,
+    Messages: () => <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M21 15a2 2 0 01-2 2H7l-4 4V5a2 2 0 012-2h14a2 2 0 012 2z" /></svg>,
+    Plus: () => <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><line x1="12" y1="5" x2="12" y2="19"></line><line x1="5" y1="12" x2="19" y2="12"></line></svg>,
+    Trash: () => <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><path d="M3 6h18M19 6v14a2 2 0 01-2 2H7a2 2 0 01-2-2V6m3 0V4a2 2 0 012-2h4a2 2 0 012 2v2" /></svg>,
+    Settings: () => <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round"><path d="M12.22 2h-.44a2 2 0 00-2 2v.18a2 2 0 01-1 1.73l-.43.25a2 2 0 01-2 0l-.15-.08a2 2 0 00-2.73.73l-.22.38a2 2 0 00.73 2.73l.15.1a2 2 0 011 1.72v.51a2 2 0 01-1 1.74l-.15.09a2 2 0 00-.73 2.73l.22.38a2 2 0 002.73.73l.15-.08a2 2 0 012 0l.43.25a2 2 0 011 1.73V20a2 2 0 002 2h.44a2 2 0 002-2v-.18a2 2 0 011-1.73l.43-.25a2 2 0 012 0l.15.08a2 2 0 002.73-.73l.22-.39a2 2 0 00-.73-2.73l-.15-.08a2 2 0 01-1-1.74v-.5a2 2 0 011-1.74l.15-.09a2 2 0 00.73-2.73l-.22-.38a2 2 0 00-2.73-.73l-.15.08a2 2 0 01-2 0l-.43-.25a2 2 0 01-1-1.73V4a2 2 0 00-2-2z" /><circle cx="12" cy="12" r="3" /></svg>,
+    Help: () => <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="12" r="10" /><path d="M9.09 9a3 3 0 015.83 1c0 2-3 3-3 3M12 17h.01" /></svg>,
+    Logout: () => <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M9 21H5a2 2 0 01-2-2V5a2 2 0 012-2h4M16 17l5-5-5-5M21 12H9" /></svg>,
+};
 
 export default function Home() {
     const [wallets, setWallets] = useState<string[]>([]);
     const [trades, setTrades] = useState<any[]>([]);
     const [newWallet, setNewWallet] = useState("");
-    const [isConnected, setIsConnected] = useState(false);
     const [stats, setStats] = useState({ balance: 100.0, initial_balance: 100.0 });
     const [filters, setFilters] = useState<string[]>([]);
     const [newFilter, setNewFilter] = useState("");
     const [availableCategories, setAvailableCategories] = useState<string[]>([]);
+    const [selectedWallet, setSelectedWallet] = useState<string | null>(null);
+    const [activeTab, setActiveTab] = useState<"OVERVIEW" | "FLEET" | "REPLICATION" | "STRATEGY" | "SETTINGS">("OVERVIEW");
+
+    // Feature State
+    const [disabledWallets, setDisabledWallets] = useState<string[]>([]);
+    const [initialBalanceInput, setInitialBalanceInput] = useState("100.0");
+    const [profiles, setProfiles] = useState<Record<string, any>>({});
+
+    // Filter State
+
+    // Filter State
+    const [searchAddress, setSearchAddress] = useState("");
+    const [sideFilter, setSideFilter] = useState<"ALL" | "BUY" | "SELL">("ALL");
+    const [dragActive, setDragActive] = useState(false);
 
     useEffect(() => {
-        // Initial fetch
         fetchConfig();
         fetchTrades();
         fetchAvailableCategories();
-
         const interval = setInterval(() => {
             fetchConfig();
             fetchTrades();
@@ -27,76 +55,38 @@ export default function Home() {
         return () => clearInterval(interval);
     }, []);
 
-    const fetchAvailableCategories = async () => {
-        try {
-            const res = await fetch(`${BACKEND_URL}/available-categories`);
-            if (res.ok) {
-                const data = await res.json();
-                setAvailableCategories(data.categories || []);
-            }
-        } catch (error) {
-            console.error("Failed to fetch available categories", error);
-        }
-    };
-
     const fetchConfig = async () => {
         try {
             const res = await fetch(`${BACKEND_URL}/config`);
             if (res.ok) {
                 const data = await res.json();
-                setWallets(data.tracked_wallets || []);
-                if (data.stats) setStats(data.stats);
+                const newWallets = data.tracked_wallets || [];
+                setWallets(newWallets);
+                setDisabledWallets(data.disabled_wallets || []);
+                if (data.stats) {
+                    setStats(data.stats);
+                    setInitialBalanceInput(data.stats.initial_balance.toString());
+                }
                 if (data.filters) setFilters(data.filters);
-                setIsConnected(true);
-            } else {
-                setIsConnected(false);
+
+                // Fetch profiles for new wallets
+                newWallets.forEach((addr: string) => {
+                    if (!profiles[addr]) fetchProfile(addr);
+                });
             }
-        } catch (error) {
-            setIsConnected(false);
-        }
+        } catch (error) { }
     };
 
-    const clearTrades = async () => {
+    const fetchProfile = async (address: string) => {
         try {
-            const res = await fetch(`${BACKEND_URL}/trades/clear`, { method: "POST" });
-            if (res.ok) {
-                fetchTrades();
-                fetchConfig();
-            }
-        } catch (error) {
-            console.error("Failed to clear trades", error);
-        }
-    };
-
-    const addFilter = async (category?: string) => {
-        const catToAdd = category || newFilter;
-        if (!catToAdd) return;
-        try {
-            const res = await fetch(`${BACKEND_URL}/filters/add?category=${catToAdd}`, {
-                method: "POST",
-            });
+            const res = await fetch(`${BACKEND_URL}/profiles/${address}`);
             if (res.ok) {
                 const data = await res.json();
-                setFilters(data.filters);
-                if (!category) setNewFilter("");
+                if (data.username || data.displayName) {
+                    setProfiles(prev => ({ ...prev, [address]: data }));
+                }
             }
-        } catch (error) {
-            console.error("Failed to add filter", error);
-        }
-    };
-
-    const removeFilter = async (category: string) => {
-        try {
-            const res = await fetch(`${BACKEND_URL}/filters/remove?category=${category}`, {
-                method: "POST",
-            });
-            if (res.ok) {
-                const data = await res.json();
-                setFilters(data.filters);
-            }
-        } catch (error) {
-            console.error("Failed to remove filter", error);
-        }
+        } catch (error) { }
     };
 
     const fetchTrades = async () => {
@@ -106,292 +96,649 @@ export default function Home() {
                 const data = await res.json();
                 setTrades(data);
             }
-        } catch (error) {
-            console.error("Failed to fetch trades", error);
-        }
+        } catch (error) { }
+    };
+
+    const fetchAvailableCategories = async () => {
+        try {
+            const res = await fetch(`${BACKEND_URL}/available-categories`);
+            if (res.ok) {
+                const data = await res.json();
+                setAvailableCategories(data.categories || []);
+            }
+        } catch (error) { }
     };
 
     const addWallet = async () => {
         if (!newWallet) return;
         try {
-            const res = await fetch(`${BACKEND_URL}/wallets/add?address=${newWallet}`, {
-                method: "POST",
-            });
+            const res = await fetch(`${BACKEND_URL}/wallets/add?address=${newWallet}`, { method: "POST" });
             if (res.ok) {
                 const data = await res.json();
                 setWallets(data.wallets);
                 setNewWallet("");
+                fetchProfile(newWallet);
             }
-        } catch (error) {
-            console.error("Failed to add wallet", error);
-        }
+        } catch (error) { }
     };
 
     const removeWallet = async (address: string) => {
         try {
-            const res = await fetch(`${BACKEND_URL}/wallets/remove?address=${address}`, {
-                method: "POST",
-            });
+            const res = await fetch(`${BACKEND_URL}/wallets/remove?address=${address}`, { method: "POST" });
             if (res.ok) {
                 const data = await res.json();
                 setWallets(data.wallets);
+                if (selectedWallet === address) setSelectedWallet(null);
             }
-        } catch (error) {
-            console.error("Failed to remove wallet", error);
-        }
+        } catch (error) { }
     };
 
+    const addFilter = async (category?: string) => {
+        const catToAdd = category || newFilter;
+        if (!catToAdd) return;
+        try {
+            const res = await fetch(`${BACKEND_URL}/filters/add?category=${catToAdd}`, { method: "POST" });
+            if (res.ok) {
+                const data = await res.json();
+                setFilters(data.filters);
+                setNewFilter("");
+            }
+        } catch (error) { }
+    };
+
+    const removeFilter = async (category: string) => {
+        try {
+            const res = await fetch(`${BACKEND_URL}/filters/remove?category=${category}`, { method: "POST" });
+            if (res.ok) {
+                const data = await res.json();
+                setFilters(data.filters);
+            }
+        } catch (error) { }
+    };
+
+    const toggleWalletTracking = async (address: string) => {
+        try {
+            const res = await fetch(`${BACKEND_URL}/wallets/toggle?address=${address}`, { method: "POST" });
+            if (res.ok) {
+                const data = await res.json();
+                setDisabledWallets(data.disabled_wallets);
+            }
+        } catch (error) { }
+    };
+
+    const updateInitialBalance = async () => {
+        const amount = parseFloat(initialBalanceInput);
+        if (isNaN(amount)) return;
+        try {
+            const res = await fetch(`${BACKEND_URL}/config/update?initial_balance=${amount}`, { method: "POST" });
+            if (res.ok) {
+                const data = await res.json();
+                setStats(data.stats);
+            }
+        } catch (error) { }
+    };
+
+    const filteredTrades = useMemo(() => {
+        return trades
+            .filter(t => {
+                const matchesWallet = selectedWallet ? t.wallet.toLowerCase() === selectedWallet.toLowerCase() : true;
+                const matchesSearch = searchAddress ? t.wallet.toLowerCase().includes(searchAddress.toLowerCase()) || t.market.toLowerCase().includes(searchAddress.toLowerCase()) : true;
+                const matchesSide = sideFilter === "ALL" ? true : t.side === sideFilter;
+                return matchesWallet && matchesSearch && matchesSide;
+            });
+    }, [trades, selectedWallet, searchAddress, sideFilter]);
+
     return (
-        <main className="min-h-screen bg-[#020617] text-slate-100 p-8 font-sans selection:bg-blue-500/30">
-            <div className="max-w-7xl mx-auto">
-                <header className="mb-12 flex justify-between items-center border-b border-slate-800/60 pb-8">
-                    <div>
-                        <div className="flex items-center gap-2 mb-1">
-                            <span className="bg-blue-600 text-white text-[10px] font-black px-1.5 py-0.5 rounded leading-none">PRO</span>
-                            <h1 className="text-3xl font-bold tracking-tight text-slate-100 italic">
-                                ANTIGRAVITY <span className="text-slate-500 font-normal">TERMINAL</span>
-                            </h1>
-                        </div>
-                        <p className="text-slate-500 text-sm font-medium">Precision algorithmic replication for Polymarket</p>
+        <main className="min-h-screen bg-[#050505] text-white font-sans selection:bg-white/20">
+            {/* Sidebar Navigation */}
+            <aside className="fixed left-0 top-0 bottom-0 w-[260px] bg-black border-r border-white/10 flex flex-col z-50">
+                <div className="p-8 flex items-center gap-3">
+                    <div className="w-10 h-10 bg-white rounded-lg flex items-center justify-center shadow-lg">
+                        <svg width="22" height="22" viewBox="0 0 24 24" fill="none"><path d="M12 4L4 12L12 20L20 12L12 4Z" stroke="black" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" /></svg>
                     </div>
                     <div>
-                        <div className="flex items-center gap-3 bg-slate-900/60 border border-slate-800 px-5 py-2.5 rounded-2xl">
-                            <div className={`w-2.5 h-2.5 ${isConnected ? 'bg-emerald-500 shadow-[0_0_10px_rgba(16,185,129,0.4)]' : 'bg-red-500 shadow-[0_0_10px_rgba(239,68,68,0.4)]'} rounded-full`} />
-                            <div>
-                                <div className="text-[10px] font-black uppercase tracking-widest text-slate-400">System Status</div>
-                                <div className="text-[11px] font-bold text-slate-200">{isConnected ? 'ONLINE & TRACKING' : 'OFFLINE / DISCONNECTED'}</div>
+                        <span className="text-[18px] font-black tracking-tight block leading-none">Pclonecopy</span>
+                        <span className="text-[9px] font-black uppercase text-white/30 tracking-[0.2em] mt-1 block">Institutional</span>
+                    </div>
+                </div>
+
+                <nav className="flex-1 px-4 py-6 space-y-1.5">
+                    {[
+                        { id: "OVERVIEW", label: "Dashboard", icon: <Icons.Dashboard /> },
+                        { id: "FLEET", label: "Node Matrix", icon: <Icons.Fleet /> },
+                        { id: "REPLICATION", label: "Stream", icon: <Icons.Matrix /> },
+                        { id: "STRATEGY", label: "Engine Logic", icon: <Icons.Strategy /> },
+                        { id: "SETTINGS", label: "Settings", icon: <Icons.Settings /> }
+                    ].map((tab) => (
+                        <button
+                            key={tab.id}
+                            onClick={() => setActiveTab(tab.id as any)}
+                            className={`w-full flex items-center gap-4 px-5 py-3.5 rounded-lg transition-all font-bold text-[12px] uppercase tracking-wider group ${activeTab === tab.id ? 'bg-white text-black shadow-xl scale-[1.02]' : 'text-white/40 hover:text-white hover:bg-white/5'}`}
+                        >
+                            <span className={`transition-colors ${activeTab === tab.id ? 'text-black' : 'text-white/20 group-hover:text-white/40'}`}>{tab.icon}</span>
+                            {tab.label}
+                        </button>
+                    ))}
+                </nav>
+
+                <div className="p-6 border-t border-white/5">
+                    <div className="bg-white/5 rounded-2xl p-4 border border-white/5">
+                        <div className="flex items-center gap-3 mb-4">
+                            <div className="w-8 h-8 rounded-lg bg-[#0075ff]/20 flex items-center justify-center">
+                                <Icons.Settings />
                             </div>
+                            <span className="text-[11px] font-black uppercase tracking-widest text-white/60">System Ready</span>
+                        </div>
+                        <div className="h-1.5 w-full bg-white/5 rounded-full overflow-hidden">
+                            <div className="h-full bg-[#01b574] w-full" />
                         </div>
                     </div>
-                </header>
+                </div>
+            </aside>
 
-                <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
-                    {/* Left Column: Config & Stats */}
-                    <div className="space-y-8">
-                        {/* Monitor Section */}
-                        <section className="bg-slate-900/50 border border-slate-800/60 p-7 rounded-3xl">
-                            <div className="flex items-center gap-3 mb-6">
-                                <div className="p-2 bg-blue-500/10 rounded-lg text-blue-500">
-                                    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2" /><circle cx="12" cy="7" r="4" /></svg>
-                                </div>
-                                <h2 className="text-xs font-black uppercase tracking-[0.2em] text-slate-300">Wallet Observers</h2>
-                            </div>
+            {/* Top Header */}
+            <header className="fixed top-0 right-0 left-[260px] h-20 bg-[#060b26]/50 backdrop-blur-md border-b border-white/5 flex items-center justify-between px-10 z-40">
+                <div className="flex items-center gap-4">
+                    <div className="flex items-center gap-2 text-white/40 text-[12px] font-bold">
+                        <span>Pclonecopy</span>
+                        <span>/</span>
+                        <span className="text-white uppercase tracking-widest">{activeTab}</span>
+                    </div>
+                </div>
 
-                            <div className="space-y-5">
-                                <form onSubmit={(e) => { e.preventDefault(); addWallet(); }} className="relative group">
-                                    <input
-                                        value={newWallet}
-                                        onChange={(e) => setNewWallet(e.target.value)}
-                                        placeholder="Add target explorer address (0x...)"
-                                        className="w-full bg-slate-950/80 border border-slate-800 rounded-xl pl-4 pr-20 py-3 text-sm focus:outline-none focus:border-blue-500/50 transition-all placeholder:text-slate-700 text-slate-200"
-                                    />
-                                    <button type="submit" className="absolute right-2 top-1.5 bottom-1.5 px-4 bg-blue-600 hover:bg-blue-500 text-white rounded-lg transition-all font-black text-[10px] tracking-widest active:scale-95">
-                                        OBSERVE
-                                    </button>
-                                </form>
+                <div className="flex items-center gap-6">
+                    <div className="flex items-center gap-3 pl-2">
+                        <div className="text-right hidden sm:block">
+                            <p className="text-[12px] font-black text-white/80 leading-none">FELIX V.</p>
+                            <p className="text-[10px] font-bold text-[#01b574] mt-1">PRO ACCOUNT</p>
+                        </div>
+                        <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-[#1a1f37] to-[#0f1535] border border-white/10 flex items-center justify-center overflow-hidden">
+                            <img src="https://api.dicebear.com/7.x/avataaars/svg?seed=Felix" alt="Avatar" className="w-8 h-8 opacity-80" />
+                        </div>
+                    </div>
+                </div>
+            </header>
 
-                                <div className="space-y-2 max-h-[220px] overflow-y-auto pr-1">
-                                    {wallets.length === 0 ? (
-                                        <div className="flex flex-col items-center justify-center py-10 border border-dashed border-slate-800/60 rounded-2xl bg-slate-950/20">
-                                            <p className="text-slate-600 text-[10px] uppercase font-black tracking-widest">No Active Monitored Target</p>
-                                            <p className="text-slate-700 text-[9px] mt-1">Enter a Polymarket wallet to start</p>
+            {/* Main Content Area */}
+            <div className="ml-[260px] pt-32 px-12 pb-20 min-h-screen">
+                {activeTab === "OVERVIEW" && (
+                    <div className="space-y-8 animate-in fade-in slide-in-from-bottom-4 duration-500">
+                        {/* KPI Grid */}
+                        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-5">
+                            {[
+                                { label: "Performance Delta", val: `$${(stats.balance - stats.initial_balance).toFixed(2)}`, icon: <Icons.Dashboard /> },
+                                { label: "System Liquidity", val: `$${stats.balance.toLocaleString()}`, icon: <Icons.Strategy /> },
+                                { label: "Active Nodes", val: wallets.filter(w => !disabledWallets.includes(w)).length, icon: <Icons.Fleet /> },
+                                { label: "Ingestion Vol", val: trades.length, icon: <Icons.Matrix /> }
+                            ].map((item, i) => (
+                                <div key={i} className="bg-white/[0.03] border border-white/10 p-6 rounded-xl flex items-center justify-between shadow-sm">
+                                    <div>
+                                        <p className="text-[10px] font-black text-white/30 uppercase tracking-widest mb-1">{item.label}</p>
+                                        <div className="flex items-center gap-2">
+                                            <h3 className="text-[20px] font-black text-white">{item.val}</h3>
                                         </div>
+                                    </div>
+                                    <div className="w-10 h-10 bg-white/5 border border-white/5 rounded-xl flex items-center justify-center text-white">
+                                        {item.icon}
+                                    </div>
+                                </div>
+                            ))}
+                        </div>
+
+                        {/* Middle Performance Grid */}
+                        <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
+                            {/* Performance Chart */}
+                            <div className="lg:col-span-8 bg-black border border-white/10 p-8 rounded-xl shadow-xl">
+                                <h3 className="text-[14px] font-black text-white uppercase tracking-wider mb-1">Execution Trajectory</h3>
+                                <p className="text-[11px] text-white/30 mb-10 font-bold italic uppercase">Neural replication growth analysis</p>
+                                <div className="h-[220px] flex items-end justify-between px-4 gap-3">
+                                    {[40, 60, 45, 95, 55, 75, 85, 40, 65, 90, 70, 80].map((h, i) => (
+                                        <div key={i} className="flex-1 rounded-sm transition-all duration-700 bg-white/5 relative group hover:bg-white/20" style={{ height: `${h}%` }}>
+                                            <div className={`absolute inset-0 bg-white/10 opacity-0 group-hover:opacity-100 transition-opacity rounded-sm ${i === 3 || i === 9 ? 'opacity-100 bg-white/20' : ''}`} />
+                                        </div>
+                                    ))}
+                                </div>
+                            </div>
+
+                            {/* Signal Gauge */}
+                            <div className="lg:col-span-4 bg-black border border-white/10 p-8 rounded-xl shadow-xl flex flex-col items-center justify-center">
+                                <h3 className="text-[14px] font-black text-white uppercase tracking-wider self-start mb-1">Signal Grade</h3>
+                                <p className="text-[11px] text-white/30 self-start mb-8 font-bold italic uppercase">Real-time quality</p>
+
+                                <div className="relative w-full aspect-square flex items-center justify-center max-w-[170px]">
+                                    <svg viewBox="0 0 100 100" className="w-full rotate-[-90deg]">
+                                        <circle cx="50" cy="50" r="45" fill="none" stroke="rgba(255,255,255,0.03)" strokeWidth="8" />
+                                        <circle cx="50" cy="50" r="45" fill="none" stroke="white" strokeWidth="8" strokeDasharray="282.7" strokeDashoffset={282.7 * (1 - 0.95)} strokeLinecap="square" className="transition-all duration-1000" />
+                                    </svg>
+                                    <div className="absolute inset-0 flex flex-col items-center justify-center">
+                                        <span className="text-[42px] font-black text-white tracking-tighter block leading-none">95<span className="text-[18px] opacity-20">%</span></span>
+                                    </div>
+                                </div>
+
+                                <div className="w-full grid grid-cols-2 gap-3 mt-10">
+                                    <div className="bg-white/[0.02] p-4 rounded-xl border border-white/5">
+                                        <p className="text-[8px] font-black text-white/20 uppercase tracking-widest text-center">Latency</p>
+                                        <p className="text-[14px] font-black text-white text-center mt-1">0.1ms</p>
+                                    </div>
+                                    <div className="bg-white/[0.02] p-4 rounded-xl border border-white/5">
+                                        <p className="text-[8px] font-black text-white/20 uppercase tracking-widest text-center">Slippage</p>
+                                        <p className="text-[14px] font-black text-white text-center mt-1">0.0%</p>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+
+                        {/* Bottom Operational Grid */}
+                        <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
+                            {/* Fleet Table */}
+                            <div className="lg:col-span-8 bg-[#1a1f37]/50 border border-white/10 p-8 rounded-3xl shadow-xl">
+                                <div className="flex items-center justify-between mb-8">
+                                    <h3 className="text-[16px] font-black text-white uppercase tracking-wider">Unit Network</h3>
+                                    <button onClick={addWallet} className="bg-[#0075ff] hover:bg-[#0075ff]/80 text-white px-5 py-2.5 rounded-xl text-[11px] font-black uppercase tracking-widest flex items-center gap-2 transition-all">
+                                        <Icons.Plus /> Register Node
+                                    </button>
+                                </div>
+
+                                <div className="space-y-3">
+                                    {wallets.length === 0 ? (
+                                        <div className="py-20 text-center text-white/10 border-2 border-dashed border-white/5 rounded-2xl font-black uppercase tracking-widest italic">Awaiting node entry</div>
                                     ) : (
-                                        wallets.map((addr) => (
-                                            <div key={addr} className="flex items-center justify-between bg-slate-950 border border-slate-800/40 p-3 rounded-xl group hover:border-blue-500/30 transition-all">
-                                                <div className="flex items-center gap-3">
-                                                    <div className="w-1.5 h-1.5 bg-blue-500 rounded-full" />
-                                                    <span className="text-xs font-mono text-slate-400 group-hover:text-slate-200 transition-colors uppercase">{addr.slice(0, 10)}...{addr.slice(-6)}</span>
+                                        wallets.map((addr, i) => (
+                                            <div key={addr} className="flex items-center justify-between px-6 py-4 bg-white/[0.02] hover:bg-white/[0.04] border border-white/5 rounded-2xl transition-all group">
+                                                <div className="flex items-center gap-5">
+                                                    <div className="w-9 h-9 rounded-lg bg-[#1a1f37] border border-white/10 flex items-center justify-center">
+                                                        <img src={`https://api.dicebear.com/7.x/pixel-art/svg?seed=${addr}`} className="w-6 h-6 opacity-40" />
+                                                    </div>
+                                                    <div>
+                                                        <p className="text-[13px] font-bold text-white font-mono">{addr.slice(0, 14)}...</p>
+                                                        <p className="text-[9px] text-white/20 font-black uppercase">REPLICATION UNIT {i + 1}</p>
+                                                    </div>
                                                 </div>
-                                                <button onClick={() => removeWallet(addr)} className="opacity-0 group-hover:opacity-100 text-slate-700 hover:text-red-500 transition-all p-1">
-                                                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round"><path d="M18 6 6 18M6 6l12 12" /></svg>
-                                                </button>
+                                                <div className="flex items-center gap-8">
+                                                    <div className="hidden md:flex flex-col gap-1 w-24">
+                                                        <div className="h-1 w-full bg-white/5 rounded-full overflow-hidden">
+                                                            <div className="h-full bg-[#0075ff]" style={{ width: `${Math.floor(Math.random() * 40 + 60)}%` }} />
+                                                        </div>
+                                                    </div>
+                                                    <span className="text-[#01b574] text-[10px] font-black uppercase tracking-widest hidden sm:block">Locked</span>
+                                                    <button onClick={() => removeWallet(addr)} className="text-white/10 hover:text-rose-500 transition-colors opacity-0 group-hover:opacity-100"><Icons.Trash /></button>
+                                                </div>
                                             </div>
                                         ))
                                     )}
                                 </div>
                             </div>
-                        </section>
 
-                        {/* Filters Section */}
-                        <section className="bg-slate-900/50 border border-slate-800/60 p-7 rounded-3xl">
-                            <div className="flex items-center gap-3 mb-6">
-                                <div className="p-2 bg-indigo-500/10 rounded-lg text-indigo-500">
-                                    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><polygon points="22 3 2 3 10 12.46 10 19 14 21 14 12.46 22 3" /></svg>
-                                </div>
-                                <h2 className="text-xs font-black uppercase tracking-[0.2em] text-slate-300">Strategy Filters</h2>
-                            </div>
-
-                            <div className="space-y-6">
-                                <div className="space-y-3">
-                                    <div className="text-[10px] text-slate-600 uppercase font-black tracking-widest pl-1">Suggested Keywords</div>
-                                    <div className="relative group">
-                                        <select
-                                            onChange={(e) => { if (e.target.value) { addFilter(e.target.value); e.target.value = ""; } }}
-                                            className="w-full bg-slate-950/80 border border-slate-800 rounded-xl px-4 py-3 text-xs font-bold focus:outline-none focus:border-indigo-500/50 transition-all text-slate-400 appearance-none cursor-pointer"
-                                        >
-                                            <option value="" disabled selected>Explore market tags...</option>
-                                            {availableCategories.filter(cat => !filters.includes(cat.toLowerCase())).map(cat => (
-                                                <option key={cat} value={cat}>{cat}</option>
-                                            ))}
-                                        </select>
-                                        <div className="absolute right-4 top-1/2 -translate-y-1/2 pointer-events-none text-slate-600 group-hover:text-indigo-400 transition-colors">
-                                            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3"><path d="m6 9 6 6 6-6" /></svg>
-                                        </div>
-                                    </div>
-                                </div>
-
-                                <div className="space-y-3">
-                                    <div className="text-[10px] text-slate-600 uppercase font-black tracking-widest pl-1 text-right">Manual Input</div>
-                                    <div className="flex gap-2 relative">
-                                        <input
-                                            value={newFilter}
-                                            onChange={(e) => setNewFilter(e.target.value)}
-                                            placeholder="Add custom niche..."
-                                            className="flex-1 bg-slate-950/80 border border-slate-800 rounded-xl px-4 py-3 text-xs focus:outline-none focus:border-indigo-500/50 transition-all placeholder:text-slate-700 font-mono text-slate-300"
-                                        />
-                                        <button onClick={() => addFilter()} className="px-5 bg-slate-800 hover:bg-indigo-600 hover:text-white text-slate-400 rounded-xl transition-all font-black text-[10px] tracking-widest active:scale-95 uppercase">
-                                            Apply
-                                        </button>
-                                    </div>
-                                </div>
-
-                                <div className="pt-4 border-t border-slate-800/40">
-                                    <div className="flex flex-wrap gap-2 min-h-[40px] items-center">
-                                        {filters.length === 0 ? (
-                                            <div className="w-full bg-slate-950/40 border border-dashed border-slate-800/60 p-3 rounded-xl text-center">
-                                                <p className="text-slate-600 text-[9px] uppercase font-black tracking-widest leading-relaxed">System Wide Monitoring Active<br /><span className="text-slate-700 font-normal mt-0.5 block">(No Filters Engaged)</span></p>
+                            {/* System Logs */}
+                            <div className="lg:col-span-4 bg-[#1a1f37]/50 border border-white/10 p-8 rounded-3xl shadow-xl">
+                                <h3 className="text-[16px] font-black text-white uppercase tracking-wider mb-8">Internal Log</h3>
+                                <div className="space-y-6">
+                                    {trades.slice(0, 6).map((trade, i) => (
+                                        <div key={trade.id} className="flex gap-4 group">
+                                            <div className={`w-1.5 h-6 rounded-full flex-shrink-0 ${trade.side === 'BUY' ? 'bg-[#0075ff]' : 'bg-rose-500'}`} />
+                                            <div className="flex-1">
+                                                <p className="text-[13px] font-bold text-white leading-none mb-1">{trade.market}</p>
+                                                <div className="flex justify-between items-center">
+                                                    <p className="text-[10px] font-bold text-white/20 tracking-tighter truncate max-w-[120px]">{trade.timestamp}</p>
+                                                    <p className={`text-[12px] font-black ${trade.side === 'BUY' ? 'text-[#01b574]' : 'text-rose-400'}`}>${(trade.amount * trade.price).toFixed(2)}</p>
+                                                </div>
                                             </div>
-                                        ) : (
-                                            filters.map((cat) => (
-                                                <div key={cat} className="flex items-center gap-2 bg-indigo-500/10 border border-indigo-500/20 px-3 py-1.5 rounded-lg hover:border-indigo-500/40 transition-colors cursor-default">
-                                                    <span className="text-[10px] font-black text-indigo-400 uppercase tracking-widest">{cat}</span>
-                                                    <button onClick={() => removeFilter(cat)} className="text-slate-600 hover:text-red-400 transition-all">
-                                                        <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="4"><path d="M18 6 6 18M6 6l12 12" /></svg>
+                                        </div>
+                                    ))}
+                                    {trades.length === 0 && (
+                                        <div className="py-20 text-center text-white/10 font-black uppercase italic tracking-widest">Idle</div>
+                                    )}
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                )}
+
+                {activeTab === "FLEET" && (
+                    <div className="animate-in fade-in zoom-in-95 duration-500 max-w-5xl mx-auto">
+                        <div className="flex items-center justify-between mb-8">
+                            <div>
+                                <h2 className="text-[24px] font-black uppercase tracking-tighter">Node Matrix</h2>
+                                <p className="text-white/30 text-[11px] font-bold italic">Cluster management and individual tracking control.</p>
+                            </div>
+                            <div className="px-5 py-2.5 bg-white/5 border border-white/10 rounded-lg text-white/60 text-[10px] font-black uppercase tracking-widest">
+                                Status: <span className="text-white">Active</span>
+                            </div>
+                        </div>
+
+                        <section className="bg-black border border-white/10 p-10 rounded-2xl shadow-2xl">
+                            <form onSubmit={(e) => { e.preventDefault(); addWallet(); }} className="flex gap-4 mb-12">
+                                <input
+                                    value={newWallet}
+                                    onChange={(e) => setNewWallet(e.target.value)}
+                                    placeholder="Inject Source Address (0x...)"
+                                    className="flex-1 bg-white/5 border border-white/10 rounded-xl px-6 py-5 text-[14px] font-bold outline-none focus:border-white focus:bg-white/10 transition-all font-mono text-white placeholder:text-white/20"
+                                />
+                                <button type="submit" className="px-10 bg-white text-black rounded-xl font-black text-[11px] uppercase tracking-widest transition-all hover:bg-white/90 active:scale-95 whitespace-nowrap">
+                                    Inject Node
+                                </button>
+                            </form>
+
+                            <div className="space-y-3">
+                                {wallets.map((addr, i) => (
+                                    <div key={addr} className={`p-4 bg-white/[0.02] border border-white/10 rounded-xl flex items-center justify-between hover:border-white/30 transition-all group ${disabledWallets.includes(addr) ? 'opacity-40 grayscale' : ''}`}>
+                                        <div className="flex items-center gap-5 overflow-hidden flex-1">
+                                            <div
+                                                className="bg-white rounded-lg flex items-center justify-center shrink-0 overflow-hidden"
+                                                style={{ width: '40px', height: '40px', minWidth: '40px' }}
+                                            >
+                                                {profiles[addr]?.image ? (
+                                                    <img src={profiles[addr].image} className="w-full h-full object-cover" />
+                                                ) : (
+                                                    <img src={`https://api.dicebear.com/7.x/pixel-art/svg?seed=${addr}`} className="w-7 h-7 opacity-80" />
+                                                )}
+                                            </div>
+                                            <div className="min-w-0 flex-1">
+                                                <div className="flex items-center gap-3">
+                                                    <p className="text-[13px] font-black text-white font-mono truncate">
+                                                        {profiles[addr]?.username || profiles[addr]?.displayName || (addr.length > 20 ? `${addr.substring(0, 8)}...${addr.substring(addr.length - 8)}` : addr)}
+                                                    </p>
+                                                    <a
+                                                        href={`https://polymarket.com/profile/${addr}`}
+                                                        target="_blank"
+                                                        rel="noopener noreferrer"
+                                                        className="text-white/20 hover:text-white transition-colors"
+                                                        title="View Polymarket Profile"
+                                                    >
+                                                        <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round"><path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2 2V8a2 2 0 0 1 2-2h6" /><polyline points="15 3 21 3 21 9" /><line x1="10" y1="14" x2="21" y2="3" /></svg>
+                                                    </a>
+                                                </div>
+                                                <p className="text-[10px] text-white/40 font-mono truncate mb-1">
+                                                    {(profiles[addr]?.username || profiles[addr]?.displayName) ? (profiles[addr].proxyWallet || addr) : "Anon Node"}
+                                                </p>
+                                                {profiles[addr]?.bio && (
+                                                    <p className="text-[10px] text-white/30 italic truncate mb-1 leading-tight">"{profiles[addr].bio}"</p>
+                                                )}
+                                                <div className="flex items-center gap-4">
+                                                    <span className="text-[9px] font-black text-white/20 tracking-widest uppercase">Sequence {i + 1}</span>
+                                                    <span className="w-1 h-1 bg-white/10 rounded-full" />
+                                                    <button
+                                                        onClick={() => toggleWalletTracking(addr)}
+                                                        className={`text-[9px] font-black uppercase tracking-widest transition-colors ${disabledWallets.includes(addr) ? 'text-white/40 hover:text-white' : 'text-white/60 hover:text-white'}`}
+                                                    >
+                                                        {disabledWallets.includes(addr) ? '[ Resume Tracking ]' : '[ Hibernate Node ]'}
                                                     </button>
                                                 </div>
-                                            ))
-                                        )}
-                                    </div>
-                                </div>
-                            </div>
-                        </section>
-
-                        {/* Portfolio Section */}
-                        <section className="bg-slate-900/30 border border-slate-800/40 p-7 rounded-3xl">
-                            <div className="flex items-center gap-3 mb-6">
-                                <div className="p-2 bg-emerald-500/10 rounded-lg text-emerald-500">
-                                    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><line x1="12" y1="1" x2="12" y2="23" /><path d="M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6" /></svg>
-                                </div>
-                                <h2 className="text-xs font-black uppercase tracking-[0.2em] text-slate-300">Shadow Account</h2>
-                            </div>
-
-                            <div className="space-y-6">
-                                <div>
-                                    <div className="flex justify-between items-center mb-1 pr-1">
-                                        <div className="text-[10px] text-slate-600 uppercase font-black tracking-widest flex items-center gap-1 group">
-                                            Simulation Balance
-                                            <span className="cursor-help opacity-50 text-[12px]">ⓘ</span>
-                                        </div>
-                                        <span className="text-[9px] font-bold text-slate-500 uppercase tracking-tighter">Live Paper-Trading</span>
-                                    </div>
-                                    <div className="text-3xl font-bold text-slate-100 tabular-nums tracking-tight">
-                                        <span className="text-emerald-500/60 text-xl mr-1 font-mono">$</span>
-                                        {stats.balance.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
-                                    </div>
-                                </div>
-
-                                <div className="grid grid-cols-2 gap-4">
-                                    <div className="bg-slate-950/40 p-4 rounded-2xl border border-slate-800/40 group hover:border-emerald-500/20 transition-all">
-                                        <div className="text-[9px] text-slate-600 uppercase font-black mb-1.5 tracking-tighter">Net Yield (PnL)</div>
-                                        <div className={`text-sm font-black tabular-nums tracking-widest ${(stats.balance - stats.initial_balance) >= 0 ? 'text-emerald-500' : 'text-red-500'}`}>
-                                            {(stats.balance - stats.initial_balance) >= 0 ? '+' : ''}
-                                            {((stats.balance - stats.initial_balance)).toFixed(2)}
-                                        </div>
-                                    </div>
-                                    <div className="bg-slate-950/40 p-4 rounded-2xl border border-slate-800/40 group hover:border-slate-700 transition-all">
-                                        <div className="text-[9px] text-slate-600 uppercase font-black mb-1.5 tracking-tighter">Starting Cap</div>
-                                        <div className="text-sm font-black text-slate-500 tabular-nums tracking-widest">${stats.initial_balance}</div>
-                                    </div>
-                                </div>
-                            </div>
-                        </section>
-                    </div>
-
-                    {/* Right Column: Replication Engine */}
-                    <div className="lg:col-span-2 space-y-10">
-                        <section className="bg-slate-900/60 border border-slate-800/60 rounded-3xl flex flex-col h-full min-h-[700px] overflow-hidden shadow-2xl">
-                            <div className="px-8 py-5 border-b border-slate-800/60 flex justify-between items-center bg-slate-900/20">
-                                <div className="flex items-center gap-3">
-                                    <div className="p-1.5 bg-slate-800 rounded-md">
-                                        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><polyline points="22 12 18 12 15 21 9 3 6 12 2 12" /></svg>
-                                    </div>
-                                    <h2 className="text-xs font-black uppercase tracking-[0.2em] text-slate-200">System Execution Logs</h2>
-                                </div>
-                                <button
-                                    onClick={clearTrades}
-                                    className="text-[10px] font-black uppercase tracking-[0.2em] text-slate-600 hover:text-red-400 transition-all border border-slate-800/60 px-4 py-2 rounded-xl hover:bg-red-500/5 hover:border-red-500/20 font-mono active:scale-95"
-                                >
-                                    WIPE_FEED
-                                </button>
-                            </div>
-                            <div className="flex-1 p-8 overflow-y-auto space-y-5">
-                                {trades.length === 0 ? (
-                                    <div className="flex flex-col items-center justify-center h-full text-center opacity-30 select-none pointer-events-none">
-                                        <div className="w-16 h-16 border-2 border-dashed border-slate-700 rounded-full flex items-center justify-center mb-6">
-                                            <div className="w-2 h-2 bg-slate-700 rounded-full animate-pulse" />
-                                        </div>
-                                        <p className="text-[11px] tracking-[0.3em] uppercase font-black text-slate-500">Listening for transaction signals...</p>
-                                        <p className="text-[9px] text-slate-600 mt-2 font-medium tracking-wide">Syncing with blockchain observers</p>
-                                    </div>
-                                ) : (
-                                    trades.map((trade) => (
-                                        <div key={trade.id} className="border border-slate-800/50 p-6 rounded-2xl bg-slate-950/40 hover:bg-slate-950/60 transition-all group">
-                                            <div className="flex justify-between items-start mb-4">
-                                                <div className="flex flex-wrap items-center gap-3">
-                                                    <div className={`px-2.5 py-1 rounded border text-[10px] font-black uppercase tracking-widest ${trade.side === 'BUY' ? 'bg-blue-500/10 border-blue-500/30 text-blue-400' : 'bg-amber-500/10 border-amber-500/30 text-amber-400'}`}>
-                                                        {trade.side} EXECUTED
-                                                    </div>
-                                                    {trade.category && trade.category !== 'All' && (
-                                                        <div className="flex items-center gap-2 bg-indigo-500/10 border border-indigo-500/20 px-2.5 py-1 rounded">
-                                                            <div className="w-1 h-1 bg-indigo-500 rounded-full" />
-                                                            <span className="text-[10px] font-black text-indigo-300 uppercase tracking-widest">
-                                                                {trade.category}
-                                                            </span>
-                                                        </div>
-                                                    )}
-                                                </div>
-                                                <span className="text-[10px] text-slate-600 font-black font-mono tracking-tighter bg-slate-900/40 px-2 py-1 rounded uppercase">{trade.timestamp} UTC</span>
-                                            </div>
-
-                                            <div className="text-sm font-black text-slate-100 mb-6 tracking-normal uppercase border-l-4 border-slate-700 pl-4 py-0.5 leading-relaxed group-hover:border-blue-500/50 transition-all">{trade.market}</div>
-
-                                            <div className="grid grid-cols-4 gap-3">
-                                                <div className="bg-slate-900/40 p-3 rounded-xl border border-slate-800/40 group-hover:border-slate-800 transition-all">
-                                                    <div className="text-[8px] uppercase text-slate-600 font-black mb-1.5 tracking-widest">Observer</div>
-                                                    <div className="text-[10px] text-slate-400 font-mono font-bold">{trade.wallet.slice(0, 8)}...</div>
-                                                </div>
-                                                <div className="bg-slate-900/40 p-3 rounded-xl border border-slate-800/40 group-hover:border-blue-500/10 transition-all">
-                                                    <div className="text-[8px] uppercase text-slate-600 font-black mb-1.5 tracking-widest">Trade Value</div>
-                                                    <div className="text-[11px] text-emerald-500 font-black tabular-nums tracking-tighter">${(trade.total_cost || (trade.amount * trade.price)).toFixed(2)}</div>
-                                                </div>
-                                                <div className="bg-slate-900/40 p-3 rounded-xl border border-slate-800/40 group-hover:border-slate-800 transition-all">
-                                                    <div className="text-[8px] uppercase text-slate-600 font-black mb-1.5 tracking-widest">Volume</div>
-                                                    <div className="text-[11px] text-slate-300 font-black tabular-nums tracking-widest">{trade.amount.toFixed(1)} <span className="text-[8px] text-slate-600">UNIT</span></div>
-                                                </div>
-                                                <div className="bg-slate-900/40 p-3 rounded-xl border border-slate-800/40 group-hover:border-blue-500/10 transition-all">
-                                                    <div className="text-[8px] uppercase text-slate-600 font-black mb-1.5 tracking-widest">Index Price</div>
-                                                    <div className="text-[11px] text-blue-400 font-black tabular-nums tracking-tighter">${trade.price.toFixed(3)}</div>
-                                                </div>
                                             </div>
                                         </div>
-                                    ))
+                                        <div className="flex items-center gap-4 shrink-0 pl-4">
+                                            <div className="hidden sm:flex flex-col items-end mr-4">
+                                                <p className="text-[9px] font-black text-white/10 uppercase tracking-widest">Protocol</p>
+                                                <p className="text-[10px] font-black text-white/40 uppercase">v2.4.0</p>
+                                            </div>
+                                            <button onClick={() => removeWallet(addr)} className="text-white/5 hover:text-rose-500 transition-colors p-2 rounded-lg hover:bg-white/5">
+                                                <Icons.Trash />
+                                            </button>
+                                        </div>
+                                    </div>
+                                ))}
+                                {wallets.length === 0 && (
+                                    <div className="py-24 text-center border border-dashed border-white/10 rounded-xl">
+                                        <p className="text-[11px] font-black uppercase text-white/10 tracking-[0.4em] italic">Cluster currently offline</p>
+                                    </div>
                                 )}
                             </div>
                         </section>
                     </div>
-                </div>
+                )}
+
+                {activeTab === "REPLICATION" && (
+                    <div className="animate-in fade-in zoom-in-95 duration-500">
+                        <div className="flex flex-col md:flex-row md:items-center justify-between gap-6 mb-10">
+                            <div>
+                                <h1 className="text-[32px] font-black uppercase tracking-tight leading-none mb-2">Replication Intake</h1>
+                                <p className="text-white/30 text-[12px] font-bold tracking-widest uppercase italic">Sub-second trade capture & verification stream</p>
+                            </div>
+
+                            <div className="flex items-center gap-4">
+                                <div className="relative group">
+                                    <select
+                                        value={searchAddress}
+                                        onChange={(e) => setSearchAddress(e.target.value)}
+                                        className="appearance-none bg-black border border-white/10 px-6 py-3.5 pr-12 rounded-xl text-[11px] font-black uppercase tracking-widest text-white outline-none focus:border-white transition-all cursor-pointer"
+                                    >
+                                        <option value="">All Source Addresses</option>
+                                        {wallets.map(w => (
+                                            <option key={w} value={w}>{w.substring(0, 10)}...</option>
+                                        ))}
+                                    </select>
+                                    <div className="absolute right-4 top-1/2 -translate-y-1/2 pointer-events-none text-white/20 group-hover:text-white transition-colors">
+                                        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3"><path d="M6 9l6 6 6-6" /></svg>
+                                    </div>
+                                </div>
+
+                                <div className="flex bg-white/5 border border-white/10 p-1 rounded-xl">
+                                    {["ALL", "BUY", "SELL"].map((side) => (
+                                        <button
+                                            key={side}
+                                            onClick={() => setSideFilter(side as any)}
+                                            className={`px-6 py-2.5 rounded-lg text-[10px] font-black tracking-widest transition-all ${sideFilter === side ? 'bg-white text-black shadow-lg scale-105' : 'text-white/30 hover:text-white'}`}
+                                        >
+                                            {side}
+                                        </button>
+                                    ))}
+                                </div>
+                            </div>
+                        </div>
+
+                        <div className="bg-black border border-white/10 rounded-2xl shadow-2xl overflow-hidden">
+                            <table className="w-full text-left border-collapse">
+                                <thead>
+                                    <tr className="border-b border-white/10 bg-white/[0.02]">
+                                        <th className="px-8 py-6 text-[10px] font-black text-white/20 uppercase tracking-[0.2em] w-16">#</th>
+                                        <th className="px-8 py-6 text-[10px] font-black text-white/20 uppercase tracking-[0.2em]">Market</th>
+                                        <th className="px-8 py-6 text-[10px] font-black text-white/20 uppercase tracking-[0.2em]">Side</th>
+                                        <th className="px-8 py-6 text-[10px] font-black text-white/20 uppercase tracking-[0.2em] text-right">Amount</th>
+                                        <th className="px-8 py-6 text-[10px] font-black text-white/20 uppercase tracking-[0.2em] text-right">Price</th>
+                                        <th className="px-8 py-6 text-[10px] font-black text-white/20 uppercase tracking-[0.2em] text-right">Total</th>
+                                        <th className="px-8 py-6 text-[10px] font-black text-white/20 uppercase tracking-[0.2em] text-right">Wallet</th>
+                                    </tr>
+                                </thead>
+                                <Reorder.Group axis="y" values={trades} onReorder={setTrades} as="tbody" className="contents">
+                                    {filteredTrades.map((trade, index) => (
+                                        <Reorder.Item
+                                            key={trade.id || index}
+                                            value={trade}
+                                            as="tr"
+                                            className="hover:bg-white/[0.05] transition-colors group cursor-grab active:cursor-grabbing relative border-b border-white/[0.05] last:border-0"
+                                            initial={{ opacity: 0, y: 10 }}
+                                            animate={{ opacity: 1, y: 0 }}
+                                            exit={{ opacity: 0, scale: 0.95 }}
+                                            whileDrag={{ backgroundColor: 'rgba(255, 255, 255, 0.05)', backdropFilter: 'blur(10px)', zIndex: 10, border: '1px solid rgba(255,255,255,0.2)' }}
+                                        >
+                                            <td className="px-8 py-5 text-[11px] font-black text-white/10 tabular-nums">{(index + 1).toString().padStart(2, '0')}</td>
+                                            <td className="px-8 py-5">
+                                                <div className="flex items-center gap-3">
+                                                    <div className="w-2 h-2 rounded-full bg-white/20 group-hover:bg-white transition-colors" />
+                                                    <span className="text-[13px] font-black text-white tracking-tight">{trade.market}</span>
+                                                </div>
+                                            </td>
+                                            <td className="px-8 py-5">
+                                                <span className={`px-2.5 py-1 rounded text-[9px] font-black ${trade.side === "BUY" ? "bg-white text-black" : "border border-white/20 text-white/60"}`}>
+                                                    {trade.side}
+                                                </span>
+                                            </td>
+                                            <td className="px-8 py-5 text-[13px] font-bold text-white/80 text-right tabular-nums">{trade.amount.toLocaleString()}</td>
+                                            <td className="px-8 py-5 text-[13px] font-bold text-white/80 text-right tabular-nums">${trade.price.toFixed(4)}</td>
+                                            <td className="px-8 py-5 text-[13px] font-black text-white text-right tabular-nums">${trade.total ? trade.total.toFixed(2) : (trade.amount * trade.price).toFixed(2)}</td>
+                                            <td className="px-8 py-5 text-right">
+                                                <span className="text-[11px] font-mono text-white/30 group-hover:text-white/60 transition-colors uppercase">{trade.wallet ? `${trade.wallet.substring(0, 6)}...${trade.wallet.substring(38)}` : 'UNKNOWN'}</span>
+                                            </td>
+                                        </Reorder.Item>
+                                    ))}
+                                </Reorder.Group>
+                            </table>
+                            {filteredTrades.length === 0 && (
+                                <div className="py-32 flex flex-col items-center justify-center">
+                                    <div className="w-16 h-16 border-2 border-dashed border-white/10 rounded-full flex items-center justify-center mb-6 animate-pulse">
+                                        <Icons.Matrix />
+                                    </div>
+                                    <p className="text-[11px] font-black uppercase text-white/10 tracking-[0.4em] italic mb-2">No packets detected</p>
+                                    <p className="text-[9px] text-white/5 font-bold uppercase tracking-widest">Awaiting sub-second frequency injection</p>
+                                </div>
+                            )}
+                        </div>
+                        <div className="mt-6 flex items-center justify-center gap-3">
+                            <span className="w-1 h-1 bg-white/20 rounded-full" />
+                            <p className="text-[10px] text-white/20 font-bold uppercase tracking-widest">Drag rows to prioritize execution sequence</p>
+                            <span className="w-1 h-1 bg-white/20 rounded-full" />
+                        </div>
+                    </div >
+                )}
+                {activeTab === "STRATEGY" && (
+                    <div className="animate-in fade-in zoom-in-95 duration-500 max-w-4xl mx-auto">
+                        <div className="text-center mb-16">
+                            <h1 className="text-[32px] font-black uppercase tracking-tighter mb-2">Engine Logic</h1>
+                            <p className="text-white/30 text-[12px] font-bold tracking-widest uppercase italic">Centralized replication filtering constraints</p>
+                        </div>
+
+                        <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
+                            <section className="bg-black border border-white/10 p-8 rounded-xl shadow-xl space-y-8">
+                                <div className="space-y-4">
+                                    <p className="text-[10px] font-black uppercase tracking-[0.2em] text-white/20">Class Registry</p>
+                                    <select
+                                        onChange={(e) => { if (e.target.value) { addFilter(e.target.value); e.target.value = ""; } }}
+                                        className="w-full bg-white/5 border border-white/10 rounded-xl px-5 py-4 text-[14px] font-bold text-white outline-none focus:border-white transition-all"
+                                    >
+                                        <option value="" disabled selected>Inject directive...</option>
+                                        {availableCategories.filter(cat => !filters.includes(cat.toLowerCase())).map(cat => (
+                                            <option key={cat} value={cat}>{cat}</option>
+                                        ))}
+                                    </select>
+                                </div>
+
+                                <div className="space-y-4 pt-4 border-t border-white/5">
+                                    <p className="text-[10px] font-black uppercase tracking-[0.2em] text-white/20">Manual Logic Injection</p>
+                                    <div className="flex gap-3">
+                                        <input
+                                            value={newFilter}
+                                            onChange={(e) => setNewFilter(e.target.value)}
+                                            placeholder="Signal Type..."
+                                            className="flex-1 bg-white/5 border border-white/10 rounded-xl px-5 py-4 text-[14px] font-bold outline-none focus:border-white transition-all text-white placeholder:text-white/20"
+                                        />
+                                        <button onClick={() => addFilter()} className="bg-white text-black px-8 rounded-xl font-black text-[11px] uppercase tracking-widest transition-all hover:bg-white/90 active:scale-95">Inject</button>
+                                    </div>
+                                </div>
+                            </section>
+
+                            <section className="bg-white/[0.01] border border-white/5 p-8 rounded-xl flex flex-col min-h-[300px]">
+                                <div className="flex items-center justify-between mb-8">
+                                    <h3 className="text-[14px] font-black text-white uppercase tracking-widest italic">Active Constraints</h3>
+                                    <span className="text-white/10 text-[9px] font-black tracking-widest uppercase">{filters.length} rules</span>
+                                </div>
+
+                                <div className="flex flex-wrap gap-2.5 content-start">
+                                    {filters.map((cat) => (
+                                        <div key={cat} className="bg-white/5 border border-white/10 pl-4 pr-1.5 py-2.5 rounded-lg flex items-center gap-4 hover:border-white/30 transition-all cursor-default group border-l-2 border-l-white">
+                                            <span className="text-[11px] font-black text-white/60 uppercase tracking-tighter">{cat}</span>
+                                            <button onClick={() => removeFilter(cat)} className="text-white/10 hover:text-white transition-all p-1 opacity-0 group-hover:opacity-100">
+                                                <Icons.Trash />
+                                            </button>
+                                        </div>
+                                    ))}
+                                    {filters.length === 0 && (
+                                        <div className="flex-1 flex flex-col items-center justify-center opacity-10">
+                                            <p className="text-[10px] font-black italic uppercase tracking-[0.4em]">Zero Override</p>
+                                        </div>
+                                    )}
+                                </div>
+                            </section>
+                        </div>
+                    </div>
+                )}
+
+                {activeTab === "SETTINGS" && (
+                    <div className="animate-in fade-in zoom-in-95 duration-500 max-w-2xl mx-auto">
+                        <div className="mb-10 text-center">
+                            <h1 className="text-[32px] font-black uppercase tracking-tighter mb-2">Platform Configuration</h1>
+                            <p className="text-white/30 text-[12px] font-bold tracking-widest uppercase italic">Institutional grade system parameters</p>
+                        </div>
+
+                        <div className="bg-black border border-white/10 p-10 rounded-xl shadow-2xl space-y-12">
+                            <div className="space-y-4">
+                                <label className="block text-[11px] font-black uppercase text-white/40 tracking-widest">Paper Trading Initialization</label>
+                                <div className="flex gap-4">
+                                    <div className="relative flex-1">
+                                        <span className="absolute left-6 top-1/2 -translate-y-1/2 text-white/40 font-bold">$</span>
+                                        <input
+                                            type="text"
+                                            value={initialBalanceInput}
+                                            onChange={(e) => setInitialBalanceInput(e.target.value)}
+                                            className="w-full bg-white/5 border border-white/10 rounded-xl pl-12 pr-6 py-5 text-[16px] font-black outline-none focus:border-white focus:bg-white/10 transition-all text-white placeholder:text-white/10"
+                                            placeholder="100.00"
+                                        />
+                                    </div>
+                                    <button
+                                        onClick={updateInitialBalance}
+                                        className="px-8 bg-white text-black rounded-xl font-black text-[11px] uppercase tracking-widest transition-all hover:bg-white/90 active:scale-95 whitespace-nowrap"
+                                    >
+                                        Apply Capital
+                                    </button>
+                                </div>
+                                <p className="text-[10px] text-white/20 font-bold italic uppercase tracking-wider">Initial simulation balance used for performance delta calculations.</p>
+                            </div>
+
+                            <div className="pt-8 border-t border-white/5">
+                                <div className="flex items-center justify-between mb-6">
+                                    <div>
+                                        <h4 className="text-[14px] font-black uppercase text-white">Simulation Engine</h4>
+                                        <p className="text-[11px] text-white/30 font-bold mt-1 uppercase tracking-widest italic">Current mode: Paper Trading</p>
+                                    </div>
+                                    <div className="w-12 h-6 bg-white/10 rounded-full relative p-1 cursor-not-allowed">
+                                        <div className="w-4 h-4 bg-white/20 rounded-full" />
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                )}
             </div>
+
+            <style jsx global>{`
+                @import url('https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&family=Inter:wght@400;500;600;700;800;900&display=swap');
+                
+                body {
+                    font-family: 'Inter', 'Plus Jakarta Sans', sans-serif;
+                    background-color: #050505;
+                    color: white;
+                    margin: 0;
+                    -webkit-font-smoothing: antialiased;
+                }
+
+                .custom-scrollbar::-webkit-scrollbar {
+                    width: 4px;
+                }
+                .custom-scrollbar::-webkit-scrollbar-track {
+                    background: transparent;
+                }
+                .custom-scrollbar::-webkit-scrollbar-thumb {
+                    background: rgba(255, 255, 255, 0.05);
+                    border-radius: 10px;
+                }
+
+                .animate-in {
+                    animation-duration: 0.4s;
+                    animation-fill-mode: both;
+                    animation-timing-function: cubic-bezier(0.16, 1, 0.3, 1);
+                }
+                
+                @keyframes fade-in { from { opacity: 0; } to { opacity: 1; } }
+                @keyframes zoom-in-95 { from { transform: scale(0.99); opacity: 0; } to { transform: scale(1); opacity: 1; } }
+                @keyframes slide-in-from-bottom-4 { from { transform: translateY(15px); opacity: 0; } to { transform: translateY(0); opacity: 1; } }
+                @keyframes slide-in-from-right-4 { from { transform: translateX(15px); opacity: 0; } to { transform: translateX(0); opacity: 1; } }
+                @keyframes slide-in-from-top-6 { from { transform: translateY(-20px); opacity: 0; } to { transform: translateY(0); opacity: 1; } }
+
+                .fade-in { animation-name: fade-in; }
+                .zoom-in-95 { animation-name: zoom-in-95; }
+                .slide-in-from-bottom-4 { animation-name: slide-in-from-bottom-4; }
+                .slide-in-from-right-4 { animation-name: slide-in-from-right-4; }
+                .slide-in-from-top-6 { animation-name: slide-in-from-top-6; }
+            `}</style>
         </main>
     );
 }
