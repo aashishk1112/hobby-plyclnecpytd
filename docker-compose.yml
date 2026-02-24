@@ -1,0 +1,20 @@
+services:
+  localstack:
+    container_name: scalar_localstack
+    image: localstack/localstack
+    ports:
+      - "127.0.0.1:4566:4566"
+    environment:
+      - SERVICES=dynamodb,cognito,lambda,events
+      - DEBUG=1
+      - DOCKER_HOST=unix:///var/run/docker.sock
+      - GOOGLE_CLIENT_ID=${GOOGLE_CLIENT_ID}
+      - GOOGLE_CLIENT_SECRET=${GOOGLE_CLIENT_SECRET}
+    volumes:
+      - "/var/run/docker.sock:/var/run/docker.sock"
+      - "./scripts/init-aws.sh:/etc/localstack/init/ready.d/init-aws.sh"
+    healthcheck:
+      test: [ "CMD", "curl", "-f", "http://localhost:4566/_localstack/health" ]
+      interval: 10s
+      timeout: 5s
+      retries: 5

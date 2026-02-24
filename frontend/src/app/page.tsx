@@ -1,9 +1,42 @@
 "use client";
 
-import { useState, useEffect, useMemo } from "react";
+import { useState, useEffect, useMemo, useRef } from "react";
 import { motion, Reorder, AnimatePresence } from "framer-motion";
+import { Amplify, Auth, Hub } from "aws-amplify";
 
-const BACKEND_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8001";
+// Load config from json (assuming it will be populated)
+// In a real build process, these would be env vars
+import awsConfig from "../../.aws_config.json";
+
+if (awsConfig.USER_POOL_ID) {
+    Amplify.configure({
+        Auth: {
+            region: awsConfig.REGION,
+            userPoolId: awsConfig.USER_POOL_ID,
+            userPoolWebClientId: awsConfig.USER_POOL_CLIENT_ID,
+            identityPoolId: awsConfig.IDENTITY_POOL_ID,
+            oauth: {
+                domain: process.env.NEXT_PUBLIC_COGNITO_DOMAIN || "us-east-1jkqtjhrlo.auth.us-east-1.amazoncognito.com",
+                scope: ["email", "profile", "openid"],
+                redirectSignIn: process.env.NEXT_PUBLIC_REDIRECT_URL || "http://localhost:3001/",
+                redirectSignOut: process.env.NEXT_PUBLIC_REDIRECT_URL || "http://localhost:3001/",
+                responseType: "code"
+            }
+        }
+    });
+} else {
+    // Dummy config to prevent Amplify from throwing errors in Local dev
+    Amplify.configure({
+        Auth: {
+            region: "us-east-1",
+            userPoolId: "us-east-1_dummy",
+            userPoolWebClientId: "dummy",
+            mandatorySignIn: false
+        }
+    });
+}
+
+const API_BASE = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8001";
 
 // Vision UI High-Fidelity Icons
 const Icons = {
@@ -26,156 +59,366 @@ export default function Home() {
     const [trades, setTrades] = useState<any[]>([]);
     const [newWallet, setNewWallet] = useState("");
     const [stats, setStats] = useState({ balance: 100.0, initial_balance: 100.0 });
+    const [balanceHistory, setBalanceHistory] = useState<{ timestamp: number; balance: number }[]>([]);
     const [filters, setFilters] = useState<string[]>([]);
     const [newFilter, setNewFilter] = useState("");
     const [availableCategories, setAvailableCategories] = useState<string[]>([]);
     const [selectedWallet, setSelectedWallet] = useState<string | null>(null);
-    const [activeTab, setActiveTab] = useState<"OVERVIEW" | "FLEET" | "REPLICATION" | "STRATEGY" | "SETTINGS">("OVERVIEW");
+    const [activeTab, setActiveTab] = useState<"IDENTITY" | "OVERVIEW" | "FLEET" | "REPLICATION" | "STRATEGY" | "SETTINGS" | "SUBSCRIPTION">("IDENTITY");
 
     // Feature State
     const [disabledWallets, setDisabledWallets] = useState<string[]>([]);
     const [initialBalanceInput, setInitialBalanceInput] = useState("100.0");
     const [profiles, setProfiles] = useState<Record<string, any>>({});
 
-    // Filter State
+    // Auth State
+    const [isAuthenticated, setIsAuthenticated] = useState(false);
+    const [user, setUser] = useState<{ username: string; email?: string; picture?: string } | null>(null);
+    const [isAuthenticating, setIsAuthenticating] = useState(true);
 
     // Filter State
     const [searchAddress, setSearchAddress] = useState("");
     const [sideFilter, setSideFilter] = useState<"ALL" | "BUY" | "SELL">("ALL");
     const [dragActive, setDragActive] = useState(false);
+    const lastCapitalResetAt = useRef<number>(0);
 
     useEffect(() => {
-        fetchConfig();
-        fetchTrades();
-        fetchAvailableCategories();
-        const interval = setInterval(() => {
+        const checkUser = async () => {
+            try {
+                if (!awsConfig.USER_POOL_ID) throw new Error("Mock Mode");
+
+                const currentUser = await Auth.currentAuthenticatedUser();
+                const session = await Auth.currentSession();
+                const token = session.getAccessToken().getJwtToken();
+                localStorage.setItem("scalar_token", token);
+
+                setIsAuthenticated(true);
+                setUser({
+                    username: currentUser.username,
+                    email: currentUser.attributes?.email,
+                    picture: currentUser.attributes?.picture || `https://api.dicebear.com/7.x/avataaars/svg?seed=${currentUser.username}`
+                });
+                setActiveTab("OVERVIEW");
+            } catch (err) {
+                console.log("No active AWS session - checking local mock");
+                const mockToken = localStorage.getItem("scalar_token");
+                const mockUserStr = localStorage.getItem("scalar_user");
+
+                if (mockToken && mockUserStr && mockToken.startsWith("mock-")) {
+                    const mockUser = JSON.parse(mockUserStr);
+                    setIsAuthenticated(true);
+                    setUser(mockUser);
+                } else {
+                    setIsAuthenticated(false);
+                    setUser(null);
+                    localStorage.removeItem("scalar_token");
+                    localStorage.removeItem("scalar_user");
+                }
+            } finally {
+                setIsAuthenticating(false);
+            }
+        };
+
+        checkUser();
+
+        // Listen for Auth events (Login/Logout)
+        const unsubscribe = Hub.listen("auth", ({ payload: { event, data } }) => {
+            switch (event) {
+                case "signIn":
+                    checkUser();
+                    break;
+                case "signOut":
+                    setIsAuthenticated(false);
+                    setUser(null);
+                    localStorage.removeItem("scalar_token");
+                    setActiveTab("IDENTITY");
+                    break;
+            }
+        });
+
+        // Browser Back Button Logout Functionality
+        const handleBackNavigation = (event: PopStateEvent) => {
+            console.log("Back button detected - logging out");
+            handleLogout();
+        };
+
+        window.addEventListener("popstate", handleBackNavigation);
+
+        if (isAuthenticated) {
             fetchConfig();
             fetchTrades();
-        }, 5000);
-        return () => clearInterval(interval);
+            fetchAvailableCategories();
+            const interval = setInterval(() => {
+                fetchConfig();
+                fetchTrades();
+            }, 5000);
+            return () => {
+                clearInterval(interval);
+                unsubscribe();
+                window.removeEventListener("popstate", handleBackNavigation);
+            };
+        }
+
+        return () => {
+            unsubscribe();
+            window.removeEventListener("popstate", handleBackNavigation);
+        };
+    }, [isAuthenticated]);
+
+    useEffect(() => {
+        const script = document.createElement("script");
+        script.src = "https://checkout.razorpay.com/v1/checkout.js";
+        script.async = true;
+        document.body.appendChild(script);
+        return () => {
+            if (document.body.contains(script)) {
+                document.body.removeChild(script);
+            }
+        }
     }, []);
+
+    const getAuthHeaders = () => ({
+        "Authorization": `Bearer ${localStorage.getItem("scalar_token") || "mock-token"}`,
+        "Content-Type": "application/json",
+    });
+
+    const fetchOptions = (method: string = "GET", body?: BodyInit): RequestInit => ({
+        method,
+        headers: getAuthHeaders(),
+        credentials: "include",
+        ...(body !== undefined && { body }),
+    });
 
     const fetchConfig = async () => {
         try {
-            const res = await fetch(`${BACKEND_URL}/config`);
+            const res = await fetch(`${API_BASE}/config`, fetchOptions());
             if (res.ok) {
                 const data = await res.json();
                 const newWallets = data.tracked_wallets || [];
                 setWallets(newWallets);
                 setDisabledWallets(data.disabled_wallets || []);
-                if (data.stats) {
-                    setStats(data.stats);
-                    setInitialBalanceInput(data.stats.initial_balance.toString());
+                const skipStatsFromPoll = Date.now() - lastCapitalResetAt.current < 15000;
+                if (data.stats && !skipStatsFromPoll) {
+                    const b = Number(data.stats.balance);
+                    const i = Number(data.stats.initial_balance);
+                    setStats({
+                        balance: Number.isFinite(b) ? b : 100,
+                        initial_balance: Number.isFinite(i) ? i : 100,
+                        subscriptionStatus: data.subscription_status || "free",
+                        subscriptionId: data.subscription_id
+                    } as any);
+                    setInitialBalanceInput((Number.isFinite(i) ? i : 100).toString());
                 }
+                if (Array.isArray(data.balance_history) && !skipStatsFromPoll) setBalanceHistory(data.balance_history);
                 if (data.filters) setFilters(data.filters);
 
                 // Fetch profiles for new wallets
                 newWallets.forEach((addr: string) => {
                     if (!profiles[addr]) fetchProfile(addr);
                 });
+            } else if (res.status === 401) {
+                setIsAuthenticated(false);
+                setUser(null);
+                localStorage.removeItem("scalar_token");
+                setActiveTab("IDENTITY");
             }
-        } catch (error) { }
+        } catch (error) { console.error("Failed to fetch config:", error); }
     };
 
     const fetchProfile = async (address: string) => {
         try {
-            const res = await fetch(`${BACKEND_URL}/profiles/${address}`);
+            const res = await fetch(`${API_BASE}/profiles/${address}`, fetchOptions());
             if (res.ok) {
                 const data = await res.json();
                 if (data.username || data.displayName) {
                     setProfiles(prev => ({ ...prev, [address]: data }));
                 }
+            } else if (res.status === 401) {
+                setIsAuthenticated(false);
+                setUser(null);
+                localStorage.removeItem("scalar_token");
+                setActiveTab("IDENTITY");
             }
-        } catch (error) { }
+        } catch (error) { console.error("Failed to fetch profile:", error); }
     };
 
     const fetchTrades = async () => {
         try {
-            const res = await fetch(`${BACKEND_URL}/trades`);
+            const res = await fetch(`${API_BASE}/trades`, fetchOptions());
             if (res.ok) {
                 const data = await res.json();
                 setTrades(data);
+            } else if (res.status === 401) {
+                setIsAuthenticated(false);
+                setUser(null);
+                localStorage.removeItem("scalar_token");
+                setActiveTab("IDENTITY");
             }
-        } catch (error) { }
+        } catch (error) { console.error("Failed to fetch trades:", error); }
     };
 
     const fetchAvailableCategories = async () => {
         try {
-            const res = await fetch(`${BACKEND_URL}/available-categories`);
+            const res = await fetch(`${API_BASE}/available-categories`, fetchOptions());
             if (res.ok) {
                 const data = await res.json();
                 setAvailableCategories(data.categories || []);
+            } else if (res.status === 401) {
+                setIsAuthenticated(false);
+                setUser(null);
+                localStorage.removeItem("scalar_token");
+                setActiveTab("IDENTITY");
             }
-        } catch (error) { }
+        } catch (error) { console.error("Failed to fetch available categories:", error); }
     };
 
     const addWallet = async () => {
         if (!newWallet) return;
         try {
-            const res = await fetch(`${BACKEND_URL}/wallets/add?address=${newWallet}`, { method: "POST" });
+            const res = await fetch(`${API_BASE}/wallets/add?address=${newWallet}`, fetchOptions("POST"));
             if (res.ok) {
                 const data = await res.json();
                 setWallets(data.wallets);
                 setNewWallet("");
                 fetchProfile(newWallet);
+            } else if (res.status === 401) {
+                setIsAuthenticated(false);
+                setUser(null);
+                localStorage.removeItem("scalar_token");
+                setActiveTab("IDENTITY");
+            } else if (res.status === 402) {
+                if (window.confirm("Address limit reached. Purchase an additional tracking slot for $5?")) {
+                    handleExtraSlotPurchase();
+                }
+            } else if (res.status === 400) {
+                alert("This address is already being tracked.");
             }
-        } catch (error) { }
+        } catch (error) { console.error("Failed to add wallet:", error); }
+    };
+
+    const handleExtraSlotPurchase = async () => {
+        try {
+            const res = await fetch(`${API_BASE}/razorpay/create-order`, fetchOptions("POST"));
+            if (res.ok) {
+                const order = await res.json();
+                const options = {
+                    key: (awsConfig as any).RAZORPAY_KEY_ID || "rzp_test_mock",
+                    amount: order.amount,
+                    currency: order.currency,
+                    name: "Pclonecopy",
+                    description: "Additional Profile Tracking Slot",
+                    order_id: order.id,
+                    handler: function (response: any) {
+                        alert("Payment Successful! One additional slot has been added to your account.");
+                        fetchConfig();
+                    },
+                    prefill: {
+                        name: user?.username || "",
+                        email: user?.email || ""
+                    },
+                    theme: { color: "#0075ff" }
+                };
+                const rzp = new (window as any).Razorpay(options);
+                rzp.open();
+            }
+        } catch (error) { console.error("Payment initiation failed:", error); }
     };
 
     const removeWallet = async (address: string) => {
         try {
-            const res = await fetch(`${BACKEND_URL}/wallets/remove?address=${address}`, { method: "POST" });
+            const res = await fetch(`${API_BASE}/wallets/remove?address=${address}`, fetchOptions("POST"));
             if (res.ok) {
                 const data = await res.json();
                 setWallets(data.wallets);
                 if (selectedWallet === address) setSelectedWallet(null);
+            } else if (res.status === 401) {
+                setIsAuthenticated(false);
+                setUser(null);
+                localStorage.removeItem("scalar_token");
+                setActiveTab("IDENTITY");
             }
-        } catch (error) { }
+        } catch (error) { console.error("Failed to remove wallet:", error); }
     };
 
     const addFilter = async (category?: string) => {
         const catToAdd = category || newFilter;
         if (!catToAdd) return;
         try {
-            const res = await fetch(`${BACKEND_URL}/filters/add?category=${catToAdd}`, { method: "POST" });
+            const res = await fetch(`${API_BASE}/filters/add?category=${catToAdd}`, fetchOptions("POST"));
             if (res.ok) {
                 const data = await res.json();
                 setFilters(data.filters);
                 setNewFilter("");
+            } else if (res.status === 401) {
+                setIsAuthenticated(false);
+                setUser(null);
+                localStorage.removeItem("scalar_token");
+                setActiveTab("IDENTITY");
             }
-        } catch (error) { }
+        } catch (error) { console.error("Failed to add filter:", error); }
     };
 
     const removeFilter = async (category: string) => {
         try {
-            const res = await fetch(`${BACKEND_URL}/filters/remove?category=${category}`, { method: "POST" });
+            const res = await fetch(`${API_BASE}/filters/remove?category=${category}`, fetchOptions("POST"));
             if (res.ok) {
                 const data = await res.json();
                 setFilters(data.filters);
+            } else if (res.status === 401) {
+                setIsAuthenticated(false);
+                setUser(null);
+                localStorage.removeItem("scalar_token");
+                setActiveTab("IDENTITY");
             }
-        } catch (error) { }
+        } catch (error) { console.error("Failed to remove filter:", error); }
     };
 
     const toggleWalletTracking = async (address: string) => {
         try {
-            const res = await fetch(`${BACKEND_URL}/wallets/toggle?address=${address}`, { method: "POST" });
+            const res = await fetch(`${API_BASE}/wallets/toggle?address=${address}`, fetchOptions("POST"));
             if (res.ok) {
                 const data = await res.json();
                 setDisabledWallets(data.disabled_wallets);
+            } else if (res.status === 401) {
+                setIsAuthenticated(false);
+                setUser(null);
+                localStorage.removeItem("scalar_token");
+                setActiveTab("IDENTITY");
             }
-        } catch (error) { }
+        } catch (error) { console.error("Failed to toggle wallet tracking:", error); }
     };
 
     const updateInitialBalance = async () => {
         const amount = parseFloat(initialBalanceInput);
         if (isNaN(amount)) return;
+
+        const confirmed = window.confirm(`This will RESET all current trade history and set the initial capital to $${amount}. Proceed?`);
+        if (!confirmed) return;
+
         try {
-            const res = await fetch(`${BACKEND_URL}/config/update?initial_balance=${amount}`, { method: "POST" });
+            const res = await fetch(`${API_BASE}/config/update?initial_balance=${amount}`, fetchOptions("POST"));
             if (res.ok) {
                 const data = await res.json();
-                setStats(data.stats);
+                const newStats = data.stats || {};
+                const balance = Number(newStats.balance);
+                const initial_balance = Number(newStats.initial_balance);
+                setStats({
+                    balance: Number.isFinite(balance) ? balance : amount,
+                    initial_balance: Number.isFinite(initial_balance) ? initial_balance : amount,
+                });
+                setBalanceHistory([{ timestamp: Date.now() / 1000, balance: Number.isFinite(balance) ? balance : amount }]);
+                setTrades([]);
+                lastCapitalResetAt.current = Date.now();
+                fetchTrades();
+                console.log("Capital re-applied and stream reset");
+            } else if (res.status === 401) {
+                setIsAuthenticated(false);
+                setUser(null);
+                localStorage.removeItem("scalar_token");
+                localStorage.removeItem("scalar_user");
+                setActiveTab("IDENTITY");
             }
-        } catch (error) { }
+        } catch (error) { console.error("Failed to update initial balance:", error); }
     };
 
     const filteredTrades = useMemo(() => {
@@ -187,6 +430,51 @@ export default function Home() {
                 return matchesWallet && matchesSearch && matchesSide;
             });
     }, [trades, selectedWallet, searchAddress, sideFilter]);
+
+    const handleLogout = async () => {
+        try {
+            if (awsConfig.USER_POOL_ID) {
+                await Auth.signOut();
+            }
+        } catch (err) {
+            console.error("Error signing out:", err);
+        }
+        setIsAuthenticated(false);
+        setUser(null);
+        localStorage.removeItem("scalar_token");
+        localStorage.removeItem("scalar_user");
+        setActiveTab("IDENTITY");
+        console.log("Logged out successfully");
+    };
+
+    const handleSocialLogin = async (provider: "Google" | "Twitter") => {
+        const fallbackMockLogin = () => {
+            console.warn("Using mock social login");
+            const mockUser = {
+                username: `${provider.toLowerCase()}_user`,
+                email: `${provider.toLowerCase()}@example.com`,
+                picture: `https://api.dicebear.com/7.x/avataaars/svg?seed=${provider}`
+            };
+            setIsAuthenticated(true);
+            setUser(mockUser);
+            localStorage.setItem("scalar_token", `mock-${provider.toLowerCase()}-token`);
+            localStorage.setItem("scalar_user", JSON.stringify(mockUser));
+            setActiveTab("OVERVIEW");
+        };
+
+        // If there is no real Cognito config, always use mock login
+        if (!awsConfig.USER_POOL_ID || !awsConfig.USER_POOL_CLIENT_ID) {
+            fallbackMockLogin();
+            return;
+        }
+
+        try {
+            await Auth.federatedSignIn({ provider: provider as any });
+        } catch (err) {
+            console.error("Federated sign-in failed, falling back to mock login:", err);
+            fallbackMockLogin();
+        }
+    };
 
     return (
         <main className="min-h-screen bg-[#050505] text-white font-sans selection:bg-white/20">
@@ -204,21 +492,33 @@ export default function Home() {
 
                 <nav className="flex-1 px-4 py-6 space-y-1.5">
                     {[
-                        { id: "OVERVIEW", label: "Dashboard", icon: <Icons.Dashboard /> },
-                        { id: "FLEET", label: "Node Matrix", icon: <Icons.Fleet /> },
-                        { id: "REPLICATION", label: "Stream", icon: <Icons.Matrix /> },
-                        { id: "STRATEGY", label: "Engine Logic", icon: <Icons.Strategy /> },
-                        { id: "SETTINGS", label: "Settings", icon: <Icons.Settings /> }
+                        { id: "IDENTITY", label: "Identity", icon: <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round"><path d="M19 21v-2a4 4 0 00-4-4H9a4 4 0 00-4 4v2" /><circle cx="12" cy="7" r="4" /></svg>, public: true },
+                        { id: "OVERVIEW", label: "Dashboard", icon: <Icons.Dashboard />, protected: true },
+                        { id: "FLEET", label: "Node Matrix", icon: <Icons.Fleet />, protected: true },
+                        { id: "REPLICATION", label: "Stream", icon: <Icons.Matrix />, protected: true },
+                        { id: "STRATEGY", label: "Engine Logic", icon: <Icons.Strategy />, protected: true },
+                        { id: "SUBSCRIPTION", label: "Subscription", icon: <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round"><path d="M12 2v20M17 5H9.5a3.5 3.5 0 000 7h5a3.5 3.5 0 010 7H6" /></svg>, protected: true },
+                        { id: "SETTINGS", label: "Settings", icon: <Icons.Settings />, protected: true }
                     ].map((tab) => (
                         <button
                             key={tab.id}
                             onClick={() => setActiveTab(tab.id as any)}
-                            className={`w-full flex items-center gap-4 px-5 py-3.5 rounded-lg transition-all font-bold text-[12px] uppercase tracking-wider group ${activeTab === tab.id ? 'bg-white text-black shadow-xl scale-[1.02]' : 'text-white/40 hover:text-white hover:bg-white/5'}`}
+                            disabled={tab.protected && !isAuthenticated}
+                            className={`w-full flex items-center gap-4 px-5 py-3.5 rounded-lg transition-all font-bold text-[12px] uppercase tracking-wider group ${activeTab === tab.id ? 'bg-white text-black shadow-xl scale-[1.02]' : 'text-white/40 hover:text-white hover:bg-white/5'} ${tab.protected && !isAuthenticated ? 'opacity-30 cursor-not-allowed' : ''}`}
                         >
                             <span className={`transition-colors ${activeTab === tab.id ? 'text-black' : 'text-white/20 group-hover:text-white/40'}`}>{tab.icon}</span>
                             {tab.label}
                         </button>
                     ))}
+                    {isAuthenticated && (
+                        <button
+                            onClick={handleLogout}
+                            className="w-full flex items-center gap-4 px-5 py-3.5 rounded-lg transition-all font-bold text-[12px] uppercase tracking-wider text-white/40 hover:text-rose-500 hover:bg-white/5"
+                        >
+                            <span className="text-white/20 group-hover:text-rose-500"><Icons.Logout /></span>
+                            Logout
+                        </button>
+                    )}
                 </nav>
 
                 <div className="p-6 border-t border-white/5">
@@ -247,21 +547,137 @@ export default function Home() {
                 </div>
 
                 <div className="flex items-center gap-6">
-                    <div className="flex items-center gap-3 pl-2">
-                        <div className="text-right hidden sm:block">
-                            <p className="text-[12px] font-black text-white/80 leading-none">FELIX V.</p>
-                            <p className="text-[10px] font-bold text-[#01b574] mt-1">PRO ACCOUNT</p>
+                    {isAuthenticated && user && (
+                        <div className="flex items-center gap-3 pl-2">
+                            <div className="text-right hidden sm:block">
+                                <p className="text-[12px] font-black text-white/80 leading-none">{(user.email || user.username).toUpperCase()}</p>
+                                <div className="flex items-center gap-2 mt-1 justify-end">
+                                    <p className={`text-[10px] font-bold ${(stats as any).subscriptionStatus === 'pro' ? 'text-[#01b574]' : 'text-white/40'}`}>
+                                        {(stats as any).subscriptionStatus === 'pro' ? 'PRO ACCOUNT' : 'FREE ACCOUNT'}
+                                    </p>
+                                    {(stats as any).subscriptionStatus === 'free' && (
+                                        <button
+                                            onClick={() => window.location.href = `${API_BASE}/subscribe`}
+                                            className="px-2 py-0.5 bg-[#0075ff] rounded text-[8px] font-black text-white hover:bg-[#0075ff]/80 transition-colors"
+                                        >
+                                            UPGRADE
+                                        </button>
+                                    )}
+                                </div>
+                            </div>
+                            <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-[#1a1f37] to-[#0f1535] border border-white/10 flex items-center justify-center overflow-hidden">
+                                <img src={user.picture || `https://api.dicebear.com/7.x/avataaars/svg?seed=${user.username}`} alt="Avatar" className="w-8 h-8 opacity-80" />
+                            </div>
                         </div>
-                        <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-[#1a1f37] to-[#0f1535] border border-white/10 flex items-center justify-center overflow-hidden">
-                            <img src="https://api.dicebear.com/7.x/avataaars/svg?seed=Felix" alt="Avatar" className="w-8 h-8 opacity-80" />
-                        </div>
-                    </div>
+                    )}
+                    {!isAuthenticated && (
+                        <button
+                            onClick={() => setActiveTab("IDENTITY")}
+                            className="px-5 py-2.5 bg-white/10 border border-white/20 rounded-lg text-[11px] font-black uppercase tracking-widest text-white hover:bg-white/20 transition-all"
+                        >
+                            Login
+                        </button>
+                    )}
                 </div>
             </header>
 
             {/* Main Content Area */}
             <div className="ml-[260px] pt-32 px-12 pb-20 min-h-screen">
-                {activeTab === "OVERVIEW" && (
+                {!isAuthenticated && activeTab !== "IDENTITY" && (
+                    <div className="flex flex-col items-center justify-center h-[calc(100vh-160px)] text-center">
+                        <div className="max-w-md text-center space-y-6">
+                            <h2 className="text-2xl font-black text-white tracking-tighter uppercase italic">Institutional Access Only</h2>
+                            <p className="text-sm text-white/40 leading-relaxed italic">
+                                This terminal section is restricted to authorized entities. Please authenticate via the IDENTITY tab to proceed with cluster management and engine monitoring.
+                            </p>
+                            <button
+                                onClick={() => setActiveTab("IDENTITY")}
+                                className="px-8 py-3 bg-white text-black font-black text-xs tracking-widest uppercase hover:bg-white/80 transition-colors"
+                            >
+                                GO TO IDENTITY
+                            </button>
+                        </div>
+                    </div>
+                )}
+
+                {activeTab === "IDENTITY" && (
+                    <div className="flex flex-col items-center justify-center h-[calc(100vh-160px)]">
+                        <div className="max-w-4xl w-full grid grid-cols-1 md:grid-cols-2 gap-12 bg-white/5 p-12 rounded-2xl border border-white/10">
+                            <div className="space-y-6">
+                                <h1 className="text-4xl font-black text-white tracking-tighter italic uppercase">Terminal Identity</h1>
+                                {isAuthenticated && user ? (
+                                    <div className="space-y-8 animate-in fade-in slide-in-from-left-4">
+                                        <div className="flex items-center gap-6">
+                                            <div className="w-24 h-24 rounded-2xl bg-white/10 border border-white/10 p-1 flex items-center justify-center overflow-hidden shadow-2xl">
+                                                <img src={user.picture} alt="Profile" className="w-full h-full rounded-xl object-cover" />
+                                            </div>
+                                            <div>
+                                                <h3 className="text-[18px] font-black text-white tracking-tight leading-none mb-2 capitalize">{user.username}</h3>
+                                                <p className="text-[12px] font-bold text-white/40 mb-3">{user.email}</p>
+                                                <span className="px-3 py-1 bg-[#01b574]/10 border border-[#01b574]/20 rounded-full text-[9px] font-black text-[#01b574] uppercase tracking-widest">Authorized</span>
+                                            </div>
+                                        </div>
+                                        <div className="grid grid-cols-2 gap-4">
+                                            <div className="bg-white/5 p-4 rounded-xl border border-white/5">
+                                                <p className="text-[9px] font-black text-white/20 uppercase tracking-widest mb-1">Session Protocol</p>
+                                                <p className="text-[12px] font-black text-white">HTTPS/JWT v3</p>
+                                            </div>
+                                            <div className="bg-white/5 p-4 rounded-xl border border-white/5">
+                                                <p className="text-[9px] font-black text-white/20 uppercase tracking-widest mb-1">Data Sharding</p>
+                                                <p className="text-[12px] font-black text-white text-[#0075ff]">US-EAST-1</p>
+                                            </div>
+                                        </div>
+                                        <button
+                                            onClick={handleLogout}
+                                            className="w-full py-4 bg-rose-500/10 border border-rose-500/20 rounded-xl text-rose-500 font-black text-[10px] tracking-widest uppercase hover:bg-rose-500 hover:text-white transition-all shadow-lg shadow-rose-500/10"
+                                        >
+                                            De-Authorize Terminal
+                                        </button>
+                                    </div>
+                                ) : (
+                                    <>
+                                        <p className="text-sm text-white/40 leading-relaxed">
+                                            Authenticate your session to sync fleet nodes, engine logic, and performance metrics across the cluster.
+                                        </p>
+                                        <div className="space-y-4 pt-4">
+                                            <button
+                                                onClick={() => handleSocialLogin("Google")}
+                                                className="w-full flex items-center justify-center gap-3 px-6 py-4 bg-white text-black font-black text-xs tracking-widest uppercase hover:bg-white/80 transition-all active:scale-[0.98] shadow-xl"
+                                            >
+                                                <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor">
+                                                    <path d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.32v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.1z" fill="#4285F4" /><path d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z" fill="#34A853" /><path d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.07H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.93l3.66-2.84z" fill="#FBBC05" /><path d="M12 5.38c1.62 0 3.06.56 4.21 1.66l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.07l3.66 2.84c.87-2.6 3.3-4.53 6.16-4.53z" fill="#EA4335" /><path d="M1 1h22v22H1z" fill="none" />
+                                                </svg>
+                                                Login with Google
+                                            </button>
+                                            {/* 
+                                            <button
+                                                onClick={() => handleSocialLogin("Twitter")}
+                                                className="w-full flex items-center justify-center gap-3 px-6 py-4 bg-[#1DA1F2] text-white font-black text-xs tracking-widest uppercase hover:bg-[#1DA1F2]/80 transition-all active:scale-[0.98] shadow-xl shadow-[#1DA1F2]/20"
+                                            >
+                                                <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor">
+                                                    <path d="M23.953 4.57a10 10 0 01-2.825.775 4.958 4.958 0 002.163-2.723c-.951.555-2.005.959-3.127 1.184a4.92 4.92 0 00-8.384 4.482C7.69 8.095 4.067 6.13 1.64 3.162a4.822 4.822 0 00-.666 2.475c0 1.71.87 3.213 2.188 4.096a4.904 4.904 0 01-2.228-.616v.06a4.923 4.923 0 003.946 4.84 4.996 4.996 0 01-2.212.085 4.936 4.936 0 004.604 3.417 9.867 9.867 0 01-6.102 2.105c-.39 0-.779-.023-1.17-.067a13.995 13.995 0 007.557 2.209c9.053 0 13.998-7.496 13.998-13.985 0-.21 0-.42-.015-.63A9.935 9.935 0 0024 4.59z" />
+                                                </svg>
+                                                Login with Twitter
+                                            </button>
+                                            */}
+                                        </div>
+                                    </>
+                                )}
+                            </div>
+                            <div className="hidden md:flex flex-col justify-center items-center border-l border-white/10 pl-12 space-y-4">
+                                <div className="w-24 h-24 bg-white/10 rounded-3xl rotate-12 flex items-center justify-center border border-white/10 shadow-2xl backdrop-blur-xl group hover:rotate-0 transition-all">
+                                    <span className="text-5xl text-white group-hover:scale-110">🔒</span>
+                                </div>
+                                <div className="text-center">
+                                    <p className="text-[10px] font-black text-white uppercase tracking-[0.3em] mb-1">Grid Protection</p>
+                                    <p className="text-[9px] text-white/20 italic font-mono uppercase">Multi-Factor Sharding Enabled</p>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                )}
+
+                {isAuthenticated && activeTab === "OVERVIEW" && (
                     <div className="space-y-8 animate-in fade-in slide-in-from-bottom-4 duration-500">
                         {/* KPI Grid */}
                         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-5">
@@ -287,16 +703,27 @@ export default function Home() {
 
                         {/* Middle Performance Grid */}
                         <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
-                            {/* Performance Chart */}
+                            {/* Performance Chart - real-time from balance_history */}
                             <div className="lg:col-span-8 bg-black border border-white/10 p-8 rounded-xl shadow-xl">
                                 <h3 className="text-[14px] font-black text-white uppercase tracking-wider mb-1">Execution Trajectory</h3>
-                                <p className="text-[11px] text-white/30 mb-10 font-bold italic uppercase">Neural replication growth analysis</p>
+                                <p className="text-[11px] text-white/30 mb-10 font-bold italic uppercase">Balance over time (real-time)</p>
                                 <div className="h-[220px] flex items-end justify-between px-4 gap-3">
-                                    {[40, 60, 45, 95, 55, 75, 85, 40, 65, 90, 70, 80].map((h, i) => (
-                                        <div key={i} className="flex-1 rounded-sm transition-all duration-700 bg-white/5 relative group hover:bg-white/20" style={{ height: `${h}%` }}>
-                                            <div className={`absolute inset-0 bg-white/10 opacity-0 group-hover:opacity-100 transition-opacity rounded-sm ${i === 3 || i === 9 ? 'opacity-100 bg-white/20' : ''}`} />
-                                        </div>
-                                    ))}
+                                    {(() => {
+                                        const hist = balanceHistory.length > 0 ? balanceHistory : [{ timestamp: 0, balance: stats.initial_balance }, { timestamp: 1, balance: stats.balance }];
+                                        const minB = Math.min(...hist.map(h => h.balance), stats.initial_balance);
+                                        const maxB = Math.max(...hist.map(h => h.balance), stats.initial_balance, stats.initial_balance * 1.01);
+                                        const range = maxB - minB || 1;
+                                        const points = hist.slice(-24);
+                                        if (points.length === 0) return <div className="flex-1 flex items-center justify-center text-white/20 text-[11px] font-bold uppercase">Awaiting data</div>;
+                                        return points.map((h, i) => {
+                                            const pct = Math.min(100, Math.max(0, ((h.balance - minB) / range) * 100));
+                                            return (
+                                                <div key={`${h.timestamp}-${i}`} className="flex-1 rounded-sm transition-all duration-700 bg-white/5 relative group hover:bg-white/20" style={{ height: `${pct}%` }} title={`$${h.balance.toFixed(2)}`}>
+                                                    <div className="absolute inset-0 bg-white/10 opacity-0 group-hover:opacity-100 transition-opacity rounded-sm" />
+                                                </div>
+                                            );
+                                        });
+                                    })()}
                                 </div>
                             </div>
 
@@ -394,7 +821,7 @@ export default function Home() {
                     </div>
                 )}
 
-                {activeTab === "FLEET" && (
+                {isAuthenticated && activeTab === "FLEET" && (
                     <div className="animate-in fade-in zoom-in-95 duration-500 max-w-5xl mx-auto">
                         <div className="flex items-center justify-between mb-8">
                             <div>
@@ -492,7 +919,32 @@ export default function Home() {
                         <div className="flex flex-col md:flex-row md:items-center justify-between gap-6 mb-10">
                             <div>
                                 <h1 className="text-[32px] font-black uppercase tracking-tight leading-none mb-2">Replication Intake</h1>
-                                <p className="text-white/30 text-[12px] font-bold tracking-widest uppercase italic">Sub-second trade capture & verification stream</p>
+                                <p className="text-white/30 text-[12px] font-bold tracking-widest uppercase italic flex items-center gap-2">
+                                    Sub-second trade capture & verification stream
+                                    <span className="inline-flex items-center gap-1.5 px-2 py-0.5 rounded bg-[#01b574]/20 border border-[#01b574]/30 text-[9px] font-black text-[#01b574] uppercase tracking-wider">
+                                        <span className="w-1.5 h-1.5 rounded-full bg-[#01b574] animate-pulse" /> Live
+                                    </span>
+                                </p>
+                            </div>
+
+                            {/* Stream Analytics Dashboard */}
+                            <div className="flex gap-4 lg:gap-8">
+                                <div className="bg-white/5 border border-white/10 px-6 py-4 rounded-xl">
+                                    <p className="text-[9px] font-black text-white/20 uppercase tracking-[0.2em] mb-1">Total PNL</p>
+                                    <p className={`text-[18px] font-black tabular-nums ${stats.balance - stats.initial_balance >= 0 ? 'text-[#01b574]' : 'text-rose-500'}`}>
+                                        {stats.balance - stats.initial_balance >= 0 ? '+' : ''}${(stats.balance - stats.initial_balance).toFixed(2)}
+                                    </p>
+                                </div>
+                                <div className="bg-white/5 border border-white/10 px-6 py-4 rounded-xl">
+                                    <p className="text-[9px] font-black text-white/20 uppercase tracking-[0.2em] mb-1">New Balance</p>
+                                    <p className="text-[18px] font-black text-white tabular-nums">${stats.balance.toFixed(2)}</p>
+                                </div>
+                                <div className="bg-white/5 border border-white/10 px-6 py-4 rounded-xl">
+                                    <p className="text-[9px] font-black text-white/20 uppercase tracking-[0.2em] mb-1">Executed Volume</p>
+                                    <p className="text-[18px] font-black text-[#0075ff] tabular-nums">
+                                        ${trades.reduce((acc, t) => acc + (t.total || (t.amount * t.price)), 0).toFixed(2)}
+                                    </p>
+                                </div>
                             </div>
 
                             <div className="flex items-center gap-4">
@@ -646,60 +1098,48 @@ export default function Home() {
                                             <p className="text-[10px] font-black italic uppercase tracking-[0.4em]">Zero Override</p>
                                         </div>
                                     )}
-                                </div>
-                            </section>
-                        </div>
-                    </div>
-                )}
 
-                {activeTab === "SETTINGS" && (
-                    <div className="animate-in fade-in zoom-in-95 duration-500 max-w-2xl mx-auto">
-                        <div className="mb-10 text-center">
-                            <h1 className="text-[32px] font-black uppercase tracking-tighter mb-2">Platform Configuration</h1>
-                            <p className="text-white/30 text-[12px] font-bold tracking-widest uppercase italic">Institutional grade system parameters</p>
-                        </div>
+                                    <div className="bg-black border border-white/10 p-10 rounded-xl shadow-2xl space-y-12">
+                                        <div className="space-y-4">
+                                            <label className="block text-[11px] font-black uppercase text-white/40 tracking-widest">Paper Trading Initialization</label>
+                                            <div className="flex gap-4">
+                                                <div className="relative flex-1">
+                                                    <span className="absolute left-6 top-1/2 -translate-y-1/2 text-white/40 font-bold">$</span>
+                                                    <input
+                                                        type="text"
+                                                        value={initialBalanceInput}
+                                                        onChange={(e) => setInitialBalanceInput(e.target.value)}
+                                                        className="w-full bg-white/5 border border-white/10 rounded-xl pl-12 pr-6 py-5 text-[16px] font-black outline-none focus:border-white focus:bg-white/10 transition-all text-white placeholder:text-white/10"
+                                                        placeholder="100.00"
+                                                    />
+                                                </div>
+                                                <button
+                                                    onClick={updateInitialBalance}
+                                                    className="px-8 bg-white text-black rounded-xl font-black text-[11px] uppercase tracking-widest transition-all hover:bg-white/90 active:scale-95 whitespace-nowrap"
+                                                >
+                                                    Apply Capital
+                                                </button>
+                                            </div>
+                                            <p className="text-[10px] text-white/20 font-bold italic uppercase tracking-wider">Initial simulation balance used for performance delta calculations.</p>
+                                        </div>
 
-                        <div className="bg-black border border-white/10 p-10 rounded-xl shadow-2xl space-y-12">
-                            <div className="space-y-4">
-                                <label className="block text-[11px] font-black uppercase text-white/40 tracking-widest">Paper Trading Initialization</label>
-                                <div className="flex gap-4">
-                                    <div className="relative flex-1">
-                                        <span className="absolute left-6 top-1/2 -translate-y-1/2 text-white/40 font-bold">$</span>
-                                        <input
-                                            type="text"
-                                            value={initialBalanceInput}
-                                            onChange={(e) => setInitialBalanceInput(e.target.value)}
-                                            className="w-full bg-white/5 border border-white/10 rounded-xl pl-12 pr-6 py-5 text-[16px] font-black outline-none focus:border-white focus:bg-white/10 transition-all text-white placeholder:text-white/10"
-                                            placeholder="100.00"
-                                        />
-                                    </div>
-                                    <button
-                                        onClick={updateInitialBalance}
-                                        className="px-8 bg-white text-black rounded-xl font-black text-[11px] uppercase tracking-widest transition-all hover:bg-white/90 active:scale-95 whitespace-nowrap"
-                                    >
-                                        Apply Capital
-                                    </button>
-                                </div>
-                                <p className="text-[10px] text-white/20 font-bold italic uppercase tracking-wider">Initial simulation balance used for performance delta calculations.</p>
-                            </div>
-
-                            <div className="pt-8 border-t border-white/5">
-                                <div className="flex items-center justify-between mb-6">
-                                    <div>
-                                        <h4 className="text-[14px] font-black uppercase text-white">Simulation Engine</h4>
-                                        <p className="text-[11px] text-white/30 font-bold mt-1 uppercase tracking-widest italic">Current mode: Paper Trading</p>
-                                    </div>
-                                    <div className="w-12 h-6 bg-white/10 rounded-full relative p-1 cursor-not-allowed">
-                                        <div className="w-4 h-4 bg-white/20 rounded-full" />
+                                        <div className="pt-8 border-t border-white/5">
+                                            <div className="flex items-center justify-between mb-6">
+                                                <div>
+                                                    <h4 className="text-[14px] font-black uppercase text-white">Simulation Engine</h4>
+                                                    <p className="text-[11px] text-white/30 font-bold mt-1 uppercase tracking-widest italic">Current mode: Paper Trading</p>
+                                                </div>
+                                                <div className="w-12 h-6 bg-white/10 rounded-full relative p-1 cursor-not-allowed">
+                                                    <div className="w-4 h-4 bg-white/20 rounded-full" />
+                                                </div>
+                                            </div>
+                                        </div>
                                     </div>
                                 </div>
-                            </div>
+                                )}
                         </div>
-                    </div>
-                )}
-            </div>
 
-            <style jsx global>{`
+                        <style jsx global>{`
                 @import url('https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&family=Inter:wght@400;500;600;700;800;900&display=swap');
                 
                 body {
@@ -739,6 +1179,6 @@ export default function Home() {
                 .slide-in-from-right-4 { animation-name: slide-in-from-right-4; }
                 .slide-in-from-top-6 { animation-name: slide-in-from-top-6; }
             `}</style>
-        </main>
-    );
+                    </main>
+                );
 }

@@ -10,7 +10,8 @@ logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
 class PolymarketTracker:
-    def __init__(self, tracked_addresses: list, trade_history: list, stats: dict = None, category_filters: list = None):
+    def __init__(self, user_id: str, tracked_addresses: list, trade_history: list, stats: dict = None, category_filters: list = None):
+        self.user_id = user_id
         self.tracked_addresses = [addr.lower() for addr in tracked_addresses]
         self.disabled_addresses = set() # Addresses to skip during monitoring
         self.trade_history = trade_history
@@ -21,6 +22,12 @@ class PolymarketTracker:
         self.trader = TradeExecutor()
         self.seen_trade_hashes = set()
         self.api_url = "https://data-api.polymarket.com/trades"
+
+    async def poll_once(self):
+        """Run a single polling cycle for Lambda."""
+        logger.info(f"Running single poll for user: {self.user_id}")
+        await self.monitor_loop()
+        return True
 
     async def start(self):
         self.running = True
@@ -133,6 +140,7 @@ class PolymarketTracker:
                                 "side": side,
                                 "amount": amount,
                                 "price": price,
+                                "total": total_cost,
                                 "total_cost": total_cost,
                                 "status": "executed",
                                 "category": matching_filter
@@ -149,6 +157,15 @@ class PolymarketTracker:
                             # Record in history for UI
                             self.trade_history.insert(0, trade_data)
                             
+                            # Persist to DynamoDB if we have user context
+                            # For the global tracker instance in main.py, we might need a way to pass the user_id
+                            # or handle it per-user. For now, we'll try to find the user_id from the session.
+                            # In a multi-user setup, the tracker should probably be refactored to be user-aware.
+                            # Using 'default-user' or the one from main.py
+                            from db import save_trade
+                            trade_data["timestamp_raw"] = timestamp_sec or time.time()
+                            save_trade(self.user_id, trade_data)
+
                             # Add to balance history for chart
                             self.balance_history.append({"timestamp": time.time(), "balance": self.stats["balance"]})
                             if len(self.balance_history) > 100:

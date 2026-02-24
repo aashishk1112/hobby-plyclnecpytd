@@ -1,0 +1,8 @@
+{
+  "REGION": "us-east-1",
+  "USER_POOL_ID": "us-east-1_JkQTjhRLO",
+  "USER_POOL_CLIENT_ID": "4s68mt65ov86fb7gdbd6al9q01",
+  "USER_POOL_CLIENT_SECRET": "",
+  "IDENTITY_POOL_ID": "",
+  "DYNAMODB_TABLE": "ScalarUsers"
+}
