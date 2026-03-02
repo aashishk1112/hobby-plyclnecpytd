@@ -12,7 +12,7 @@ import jwt as pyjwt # renamed to avoid conflict with jose.jwt
 from jose import jwt
 import json
 import time
-from db import get_user_data, update_user_data, add_wallet as db_add_wallet, remove_wallet as db_remove_wallet
+from db import get_user_data, update_user_data, add_wallet as db_add_wallet, terminate_wallet, clear_user_trades, update_user_balance
 
 from tracker import PolymarketTracker
 import razorpay
@@ -86,8 +86,6 @@ async def get_current_user(request):
     
     # Check if mock auth is enabled (default to False for production)
     is_mock = os.getenv("MOCK_AUTH", "False").lower() == "true"
-    if is_mock:
-        return "local-test-user"
     
     if not auth_header or not auth_header.startswith("Bearer "):
         if is_mock:
@@ -162,7 +160,8 @@ app.add_middleware(
         "http://127.0.0.1:3000", 
         "http://127.0.0.1:3001", 
         "http://scalar-planck-web-1772426438.s3-website.ap-south-1.amazonaws.com",
-        os.getenv("FRONTEND_URL", "http://scalar-planck-web-1772426438.s3-website.ap-south-1.amazonaws.com")
+        "https://d3ukbv7x6b8vr.cloudfront.net",
+        os.getenv("FRONTEND_URL", "https://d3ukbv7x6b8vr.cloudfront.net")
     ],
     allow_credentials=True,
     allow_methods=["*"],
@@ -197,12 +196,14 @@ async def get_config(request: Request):
     if not skip_db_sync:
         if tracker.stats.get("initial_balance", default_initial) == default_initial:
             tracker.stats["initial_balance"] = float(data.get("initialBalance", default_initial))
-        # Optional: Sync balance if not skipping
-        # tracker.stats["balance"] = float(data.get("balance", tracker.stats["balance"]))
+        
+        # Sync current balance from DB (survives cold starts)
+        tracker.stats["balance"] = float(data.get("balance", tracker.stats.get("balance", default_initial)))
 
     return {
         "tracked_wallets": tracker.tracked_addresses,
         "disabled_wallets": list(tracker.disabled_addresses),
+        "terminated_wallets": data.get("terminatedWallets", []),
         "paper_trading": os.getenv("PAPER_TRADING", "True") == "True",
         "stats": {
             "balance": float(tracker.stats.get("balance", default_initial)),
@@ -228,9 +229,10 @@ async def update_config(request: Request, initial_balance: Optional[float] = Non
 
         # Reset current balance and trade history when capital is re-applied
         tracker.stats["balance"] = initial_balance
+        data["balance"] = initial_balance  # Persist reset balance to DB
         tracker.last_reset_at = time.time()  # Mark reset time for sync guard
         trade_history.clear()
-        db.clear_user_trades(user_id) # Hard delete from DynamoDB
+        clear_user_trades(user_id) # Hard delete from DynamoDB
         await tracker.clear_cache()
 
         update_user_data(user_id, data)
@@ -333,22 +335,31 @@ async def add_wallet(request: Request, address: str):
     current_wallets = data.get("trackedWallets", [])
     extra_slots = data.get("extraSlots", 0)
     
-    # Duplicate check first
-    if address in current_wallets:
-        raise HTTPException(status_code=400, detail="Address is already being tracked.")
-        
     # Enforce limits: Free tier is 2 + extra_slots
     if subscription_status == "free" and len(current_wallets) >= (2 + extra_slots):
-        raise HTTPException(status_code=402, detail="Address limit reached. Please purchase an additional slot for $5.")
+        # We only block IF it's a NEW wallet. Reactivation should be allowed even if at limit.
+        if address not in current_wallets:
+            raise HTTPException(status_code=402, detail="Address limit reached. Please purchase an additional slot for $5.")
     
     result = db_add_wallet(user_id, address)
     if result == "duplicate":
         raise HTTPException(status_code=400, detail="Address is already being tracked.")
+    
+    if result == "reactivated":
+        # Remove from tracker's disabled list if present
+        if address in tracker.disabled_addresses:
+            tracker.disabled_addresses.remove(address)
+        logger.info(f"User {user_id} reactivated wallet: {address}")
+        return {"message": f"Reactivated wallet {address}", "wallets": tracker.tracked_addresses, "status": "reactivated"}
         
     if result:
         # Update active tracker
         if address not in tracker.tracked_addresses:
             tracker.tracked_addresses.append(address)
+        # Ensure it's not in disabled list
+        if address in tracker.disabled_addresses:
+            tracker.disabled_addresses.remove(address)
+            
         logger.info(f"User {user_id} added wallet: {address}")
         return {"message": f"Added wallet {address}", "wallets": tracker.tracked_addresses}
     
@@ -405,18 +416,18 @@ async def razorpay_webhook(request: Request):
         logger.error(f"Razorpay webhook error: {e}")
         return {"status": "error", "message": str(e)}
 
-@app.post("/wallets/remove")
-async def remove_wallet(request: Request, address: str):
+@app.post("/wallets/terminate")
+async def terminate_wallet_endpoint(request: Request, address: str):
     user_id = request.state.user_id
     address = address.lower()
     
-    if db_remove_wallet(user_id, address):
-        if address in tracker.tracked_addresses:
-            tracker.tracked_addresses.remove(address)
-        logger.info(f"User {user_id} removed wallet: {address}")
-        return {"message": f"Removed wallet {address}", "wallets": tracker.tracked_addresses}
+    if terminate_wallet(user_id, address):
+        if address not in tracker.disabled_addresses:
+            tracker.disabled_addresses.add(address)
+        logger.info(f"User {user_id} terminated wallet: {address}")
+        return {"message": f"Terminated wallet {address}", "wallets": tracker.tracked_addresses}
     
-    return {"message": "Failed to remove wallet", "wallets": tracker.tracked_addresses}
+    return {"message": "Failed to terminate wallet", "wallets": tracker.tracked_addresses}
 
 @app.get("/profiles/{address}")
 async def get_profile(address: str):

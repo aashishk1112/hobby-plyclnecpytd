@@ -46,7 +46,9 @@ def get_user_data(user_id: str):
             "userId": user_id,
             "trackedWallets": [],
             "disabledWallets": [],
+            "terminatedWallets": [],
             "initialBalance": 100.0,
+            "balance": 100.0,
             "subscriptionStatus": "free", # free, pro, cancelled
             "subscriptionId": None,
             "extraSlots": 0  # Number of additional slots purchased
@@ -65,11 +67,43 @@ def update_user_data(user_id: str, data: dict):
         logger.error(f"Error updating user data: {e.response['Error']['Message']}")
         return False
 
+def update_user_balance(user_id: str, balance: float):
+    """Update only the current balance for a user."""
+    try:
+        table.update_item(
+            Key={"userId": user_id},
+            UpdateExpression="SET balance = :b",
+            ExpressionAttributeValues={":b": handle_floats(balance)}
+        )
+        return True
+    except ClientError as e:
+        logger.error(f"Error updating balance for {user_id}: {e.response['Error']['Message']}")
+        return False
+
 def add_wallet(user_id: str, address: str):
     try:
-        # Check for duplicate
         data = get_user_data(user_id)
-        if address in data.get("trackedWallets", []):
+        if not data: return False
+        
+        current_wallets = data.get("trackedWallets", [])
+        terminated_wallets = data.get("terminatedWallets", [])
+        
+        # Check for reactivation
+        if address in current_wallets and address in terminated_wallets:
+            terminated_wallets.remove(address)
+            data["terminatedWallets"] = terminated_wallets
+            
+            # Ensure it's removed from disabledWallets to resume tracking
+            disabled = data.get("disabledWallets", [])
+            if address in disabled:
+                disabled.remove(address)
+                data["disabledWallets"] = disabled
+                
+            update_user_data(user_id, data)
+            return "reactivated"
+            
+        # Check for duplicate active wallet
+        if address in current_wallets:
             return "duplicate"
             
         table.update_item(
@@ -85,14 +119,24 @@ def add_wallet(user_id: str, address: str):
         logger.error(f"Error adding wallet: {e.response['Error']['Message']}")
         return False
 
-def remove_wallet(user_id: str, address: str):
+def terminate_wallet(user_id: str, address: str):
+    """Mark a wallet as terminated. It remains in trackedWallets but trading stops."""
     data = get_user_data(user_id)
     if not data: return False
     
     if address in data["trackedWallets"]:
-        data["trackedWallets"].remove(address)
-        if address in data.get("disabledWallets", []):
-            data["disabledWallets"].remove(address)
+        if "terminatedWallets" not in data:
+            data["terminatedWallets"] = []
+        
+        if address not in data["terminatedWallets"]:
+            data["terminatedWallets"].append(address)
+            
+        # Also ensure it's in disabledWallets for tracker
+        if "disabledWallets" not in data:
+            data["disabledWallets"] = []
+        if address not in data["disabledWallets"]:
+            data["disabledWallets"].append(address)
+            
         return update_user_data(user_id, data)
     return True
 

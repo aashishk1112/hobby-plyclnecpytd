@@ -68,6 +68,7 @@ export default function Home() {
 
     // Feature State
     const [disabledWallets, setDisabledWallets] = useState<string[]>([]);
+    const [terminatedWallets, setTerminatedWallets] = useState<string[]>([]);
     const [initialBalanceInput, setInitialBalanceInput] = useState("100.0");
     const [profiles, setProfiles] = useState<Record<string, any>>({});
 
@@ -81,6 +82,13 @@ export default function Home() {
     const [sideFilter, setSideFilter] = useState<"ALL" | "BUY" | "SELL">("ALL");
     const [dragActive, setDragActive] = useState(false);
     const lastCapitalResetAt = useRef<number>(0);
+    const [isPageVisible, setIsPageVisible] = useState(true);
+
+    useEffect(() => {
+        const handleVisibilityChange = () => setIsPageVisible(document.visibilityState === "visible");
+        document.addEventListener("visibilitychange", handleVisibilityChange);
+        return () => document.removeEventListener("visibilitychange", handleVisibilityChange);
+    }, []);
 
     useEffect(() => {
         const checkUser = async () => {
@@ -136,7 +144,7 @@ export default function Home() {
             }
         });
 
-        if (isAuthenticated) {
+        if (isAuthenticated && isPageVisible) {
             fetchConfig();
             fetchAvailableCategories();
 
@@ -151,28 +159,32 @@ export default function Home() {
         return () => {
             unsubscribe();
         };
-    }, [isAuthenticated]);
+    }, [isAuthenticated, isPageVisible]);
 
     // Separate effect for trades polling to be more efficient
     useEffect(() => {
-        if (isAuthenticated && wallets.length > 0) {
+        const canPollTrades = isAuthenticated &&
+            isPageVisible &&
+            wallets.length > 0 &&
+            (activeTab === "OVERVIEW" || activeTab === "REPLICATION");
+
+        if (canPollTrades) {
             fetchTrades();
             const tradesInterval = setInterval(fetchTrades, 10000);
             return () => clearInterval(tradesInterval);
         }
-    }, [isAuthenticated, wallets.length]);
+    }, [isAuthenticated, isPageVisible, wallets.length, activeTab]);
 
-    useEffect(() => {
-        const script = document.createElement("script");
-        script.src = "https://checkout.razorpay.com/v1/checkout.js";
-        script.async = true;
-        document.body.appendChild(script);
-        return () => {
-            if (document.body.contains(script)) {
-                document.body.removeChild(script);
-            }
-        }
-    }, []);
+    const loadRazorpay = () => {
+        return new Promise((resolve) => {
+            if ((window as any).Razorpay) return resolve(true);
+            const script = document.createElement("script");
+            script.src = "https://checkout.razorpay.com/v1/checkout.js";
+            script.async = true;
+            script.onload = () => resolve(true);
+            document.body.appendChild(script);
+        });
+    };
 
     const getAuthHeaders = () => ({
         "Authorization": `Bearer ${localStorage.getItem("scalar_token") || "mock-token"}`,
@@ -193,6 +205,7 @@ export default function Home() {
                 const newWallets = data.tracked_wallets || [];
                 setWallets(newWallets);
                 setDisabledWallets(data.disabled_wallets || []);
+                setTerminatedWallets(data.terminated_wallets || []);
                 const skipStatsFromPoll = Date.now() - lastCapitalResetAt.current < 15000;
                 if (data.stats && !skipStatsFromPoll) {
                     const b = Number(data.stats.balance);
@@ -203,7 +216,11 @@ export default function Home() {
                         subscriptionStatus: data.subscription_status || "free",
                         subscriptionId: data.subscription_id
                     } as any);
-                    setInitialBalanceInput((Number.isFinite(i) ? i : 100).toString());
+
+                    // Only initialize the input field if it's currently empty or at the default "100.0"
+                    if (initialBalanceInput === "100.0" || initialBalanceInput === "") {
+                        setInitialBalanceInput((Number.isFinite(i) ? i : 100).toString());
+                    }
                 }
                 if (Array.isArray(data.balance_history) && !skipStatsFromPoll) setBalanceHistory(data.balance_history);
                 if (data.filters) setFilters(data.filters);
@@ -275,7 +292,11 @@ export default function Home() {
             if (res.ok) {
                 const data = await res.json();
                 setWallets(data.wallets);
+                if (data.status === "reactivated") {
+                    alert("Node Reactivated: This address was previously terminated and has now been restored to active duty.");
+                }
                 setNewWallet("");
+                fetchConfig(); // Refresh to update terminatedWallets and disabledWallets
                 fetchProfile(newWallet);
             } else if (res.status === 401) {
                 setIsAuthenticated(false);
@@ -294,6 +315,7 @@ export default function Home() {
 
     const handleExtraSlotPurchase = async () => {
         try {
+            await loadRazorpay();
             const res = await fetch(`${API_BASE}/razorpay/create-order`, fetchOptions("POST"));
             if (res.ok) {
                 const order = await res.json();
@@ -320,20 +342,25 @@ export default function Home() {
         } catch (error) { console.error("Payment initiation failed:", error); }
     };
 
-    const removeWallet = async (address: string) => {
+    const terminateWallet = async (address: string) => {
+        const confirmed = window.confirm("Are you sure you want to terminate this wallet? Once terminated, it cannot be deleted and will still occupy a subscription slot, but all trade replication will stop.");
+        if (!confirmed) return;
+
         try {
-            const res = await fetch(`${API_BASE}/wallets/remove?address=${address}`, fetchOptions("POST"));
+            const res = await fetch(`${API_BASE}/wallets/terminate?address=${address}`, fetchOptions("POST"));
             if (res.ok) {
                 const data = await res.json();
                 setWallets(data.wallets);
+                if (data.terminated_wallets) setTerminatedWallets(data.terminated_wallets);
                 if (selectedWallet === address) setSelectedWallet(null);
+                fetchConfig(); // Refresh full state
             } else if (res.status === 401) {
                 setIsAuthenticated(false);
                 setUser(null);
                 localStorage.removeItem("scalar_token");
                 setActiveTab("IDENTITY");
             }
-        } catch (error) { console.error("Failed to remove wallet:", error); }
+        } catch (error) { console.error("Failed to terminate wallet:", error); }
     };
 
     const addFilter = async (category?: string) => {
@@ -796,28 +823,37 @@ export default function Home() {
                                     {wallets.length === 0 ? (
                                         <div className="py-20 text-center text-white/10 border-2 border-dashed border-white/5 rounded-2xl font-black uppercase tracking-widest italic">Awaiting node entry</div>
                                     ) : (
-                                        wallets.map((addr, i) => (
-                                            <div key={addr} className="flex items-center justify-between px-6 py-4 bg-white/[0.02] hover:bg-white/[0.04] border border-white/5 rounded-2xl transition-all group">
-                                                <div className="flex items-center gap-5">
-                                                    <div className="w-9 h-9 rounded-lg bg-[#1a1f37] border border-white/10 flex items-center justify-center">
-                                                        <img src={`https://api.dicebear.com/7.x/pixel-art/svg?seed=${addr}`} className="w-6 h-6 opacity-40" />
-                                                    </div>
-                                                    <div>
-                                                        <p className="text-[13px] font-bold text-white font-mono">{addr.slice(0, 14)}...</p>
-                                                        <p className="text-[9px] text-white/20 font-black uppercase">REPLICATION UNIT {i + 1}</p>
-                                                    </div>
-                                                </div>
-                                                <div className="flex items-center gap-8">
-                                                    <div className="hidden md:flex flex-col gap-1 w-24">
-                                                        <div className="h-1 w-full bg-white/5 rounded-full overflow-hidden">
-                                                            <div className="h-full bg-[#0075ff]" style={{ width: `${Math.floor(Math.random() * 40 + 60)}%` }} />
+                                        wallets.map((addr, i) => {
+                                            const isTerminated = terminatedWallets.includes(addr);
+                                            return (
+                                                <div key={addr} className={`flex items-center justify-between px-6 py-4 bg-white/[0.02] border border-white/5 rounded-2xl transition-all group ${isTerminated ? 'opacity-40 grayscale' : 'hover:bg-white/[0.04]'}`}>
+                                                    <div className="flex items-center gap-5">
+                                                        <div className="w-9 h-9 rounded-lg bg-[#1a1f37] border border-white/10 flex items-center justify-center">
+                                                            <img src={`https://api.dicebear.com/7.x/pixel-art/svg?seed=${addr}`} className="w-6 h-6 opacity-40" />
+                                                        </div>
+                                                        <div>
+                                                            <p className="text-[13px] font-bold text-white font-mono">{addr.slice(0, 14)}...</p>
+                                                            <p className="text-[9px] text-white/20 font-black uppercase">REPLICATION UNIT {i + 1}</p>
                                                         </div>
                                                     </div>
-                                                    <span className="text-[#01b574] text-[10px] font-black uppercase tracking-widest hidden sm:block">Locked</span>
-                                                    <button onClick={() => removeWallet(addr)} className="text-white/10 hover:text-rose-500 transition-colors opacity-0 group-hover:opacity-100"><Icons.Trash /></button>
+                                                    <div className="flex items-center gap-8">
+                                                        <div className="hidden md:flex flex-col gap-1 w-24">
+                                                            <div className="h-1 w-full bg-white/5 rounded-full overflow-hidden">
+                                                                <div className="h-full bg-[#0075ff]" style={{ width: `${Math.floor(Math.random() * 40 + 60)}%` }} />
+                                                            </div>
+                                                        </div>
+                                                        {isTerminated ? (
+                                                            <span className="text-rose-500 text-[10px] font-black uppercase tracking-widest">Terminated</span>
+                                                        ) : (
+                                                            <>
+                                                                <span className="text-[#01b574] text-[10px] font-black uppercase tracking-widest hidden sm:block">Locked</span>
+                                                                <button onClick={() => terminateWallet(addr)} className="text-white/10 hover:text-rose-500 transition-colors opacity-0 group-hover:opacity-100" title="Terminate Tracking"><Icons.Trash /></button>
+                                                            </>
+                                                        )}
+                                                    </div>
                                                 </div>
-                                            </div>
-                                        ))
+                                            );
+                                        })
                                     )}
                                 </div>
                             </div>
@@ -873,63 +909,74 @@ export default function Home() {
                             </form>
 
                             <div className="space-y-3">
-                                {wallets.map((addr, i) => (
-                                    <div key={addr} className={`p-4 bg-white/[0.02] border border-white/10 rounded-xl flex items-center justify-between hover:border-white/30 transition-all group ${disabledWallets.includes(addr) ? 'opacity-40 grayscale' : ''}`}>
-                                        <div className="flex items-center gap-5 overflow-hidden flex-1">
-                                            <div
-                                                className="bg-white rounded-lg flex items-center justify-center shrink-0 overflow-hidden"
-                                                style={{ width: '40px', height: '40px', minWidth: '40px' }}
-                                            >
-                                                {profiles[addr]?.image ? (
-                                                    <img src={profiles[addr].image} className="w-full h-full object-cover" />
-                                                ) : (
-                                                    <img src={`https://api.dicebear.com/7.x/pixel-art/svg?seed=${addr}`} className="w-7 h-7 opacity-80" />
-                                                )}
-                                            </div>
-                                            <div className="min-w-0 flex-1">
-                                                <div className="flex items-center gap-3">
-                                                    <p className="text-[13px] font-black text-white font-mono truncate">
-                                                        {profiles[addr]?.username || profiles[addr]?.displayName || (addr.length > 20 ? `${addr.substring(0, 8)}...${addr.substring(addr.length - 8)}` : addr)}
+                                {wallets.map((addr, i) => {
+                                    const isTerminated = terminatedWallets.includes(addr);
+                                    const isDisabled = disabledWallets.includes(addr);
+
+                                    return (
+                                        <div key={addr} className={`p-4 bg-white/[0.02] border border-white/10 rounded-xl flex items-center justify-between hover:border-white/30 transition-all group ${(isTerminated || isDisabled) ? 'opacity-40 grayscale' : ''}`}>
+                                            <div className="flex items-center gap-5 overflow-hidden flex-1">
+                                                <div
+                                                    className="bg-white rounded-lg flex items-center justify-center shrink-0 overflow-hidden"
+                                                    style={{ width: '40px', height: '40px', minWidth: '40px' }}
+                                                >
+                                                    {profiles[addr]?.image ? (
+                                                        <img src={profiles[addr].image} className="w-full h-full object-cover" />
+                                                    ) : (
+                                                        <img src={`https://api.dicebear.com/7.x/pixel-art/svg?seed=${addr}`} className="w-7 h-7 opacity-80" />
+                                                    )}
+                                                </div>
+                                                <div className="min-w-0 flex-1">
+                                                    <div className="flex items-center gap-3">
+                                                        <p className="text-[13px] font-black text-white font-mono truncate">
+                                                            {profiles[addr]?.username || profiles[addr]?.displayName || (addr.length > 20 ? `${addr.substring(0, 8)}...${addr.substring(addr.length - 8)}` : addr)}
+                                                        </p>
+                                                        <a
+                                                            href={`https://polymarket.com/profile/${addr}`}
+                                                            target="_blank"
+                                                            rel="noopener noreferrer"
+                                                            className="text-white/20 hover:text-white transition-colors"
+                                                            title="View Polymarket Profile"
+                                                        >
+                                                            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round"><path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2 2V8a2 2 0 0 1 2-2h6" /><polyline points="15 3 21 3 21 9" /><line x1="10" y1="14" x2="21" y2="3" /></svg>
+                                                        </a>
+                                                    </div>
+                                                    <p className="text-[10px] text-white/40 font-mono truncate mb-1">
+                                                        {(profiles[addr]?.username || profiles[addr]?.displayName) ? (profiles[addr].proxyWallet || addr) : "Anon Node"}
                                                     </p>
-                                                    <a
-                                                        href={`https://polymarket.com/profile/${addr}`}
-                                                        target="_blank"
-                                                        rel="noopener noreferrer"
-                                                        className="text-white/20 hover:text-white transition-colors"
-                                                        title="View Polymarket Profile"
-                                                    >
-                                                        <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round"><path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2 2V8a2 2 0 0 1 2-2h6" /><polyline points="15 3 21 3 21 9" /><line x1="10" y1="14" x2="21" y2="3" /></svg>
-                                                    </a>
+                                                    {profiles[addr]?.bio && (
+                                                        <p className="text-[10px] text-white/30 italic truncate mb-1 leading-tight">"{profiles[addr].bio}"</p>
+                                                    )}
+                                                    <div className="flex items-center gap-4">
+                                                        <span className="text-[9px] font-black text-white/20 tracking-widest uppercase">Sequence {i + 1}</span>
+                                                        <span className="w-1 h-1 bg-white/10 rounded-full" />
+                                                        {isTerminated ? (
+                                                            <span className="text-rose-500 text-[9px] font-black uppercase tracking-widest">Permanently Terminated</span>
+                                                        ) : (
+                                                            <button
+                                                                onClick={() => toggleWalletTracking(addr)}
+                                                                className={`text-[9px] font-black uppercase tracking-widest transition-colors ${isDisabled ? 'text-white/40 hover:text-white' : 'text-white/60 hover:text-white'}`}
+                                                            >
+                                                                {isDisabled ? '[ Resume Tracking ]' : '[ Hibernate Node ]'}
+                                                            </button>
+                                                        )}
+                                                    </div>
                                                 </div>
-                                                <p className="text-[10px] text-white/40 font-mono truncate mb-1">
-                                                    {(profiles[addr]?.username || profiles[addr]?.displayName) ? (profiles[addr].proxyWallet || addr) : "Anon Node"}
-                                                </p>
-                                                {profiles[addr]?.bio && (
-                                                    <p className="text-[10px] text-white/30 italic truncate mb-1 leading-tight">"{profiles[addr].bio}"</p>
-                                                )}
-                                                <div className="flex items-center gap-4">
-                                                    <span className="text-[9px] font-black text-white/20 tracking-widest uppercase">Sequence {i + 1}</span>
-                                                    <span className="w-1 h-1 bg-white/10 rounded-full" />
-                                                    <button
-                                                        onClick={() => toggleWalletTracking(addr)}
-                                                        className={`text-[9px] font-black uppercase tracking-widest transition-colors ${disabledWallets.includes(addr) ? 'text-white/40 hover:text-white' : 'text-white/60 hover:text-white'}`}
-                                                    >
-                                                        {disabledWallets.includes(addr) ? '[ Resume Tracking ]' : '[ Hibernate Node ]'}
+                                            </div>
+                                            <div className="flex items-center gap-4 shrink-0 pl-4">
+                                                <div className="hidden sm:flex flex-col items-end mr-4">
+                                                    <p className="text-[9px] font-black text-white/10 uppercase tracking-widest">Protocol</p>
+                                                    <p className="text-[10px] font-black text-white/40 uppercase">v2.4.0</p>
+                                                </div>
+                                                {!isTerminated && (
+                                                    <button onClick={() => terminateWallet(addr)} className="text-white/5 hover:text-rose-500 transition-colors p-2 rounded-lg hover:bg-white/5" title="Terminate Node">
+                                                        <Icons.Trash />
                                                     </button>
-                                                </div>
+                                                )}
                                             </div>
                                         </div>
-                                        <div className="flex items-center gap-4 shrink-0 pl-4">
-                                            <div className="hidden sm:flex flex-col items-end mr-4">
-                                                <p className="text-[9px] font-black text-white/10 uppercase tracking-widest">Protocol</p>
-                                                <p className="text-[10px] font-black text-white/40 uppercase">v2.4.0</p>
-                                            </div>
-                                            <button onClick={() => removeWallet(addr)} className="text-white/5 hover:text-rose-500 transition-colors p-2 rounded-lg hover:bg-white/5">
-                                                <Icons.Trash />
-                                            </button>
-                                        </div>
-                                    </div>
-                                ))}
+                                    );
+                                })}
                                 {wallets.length === 0 && (
                                     <div className="py-24 text-center border border-dashed border-white/10 rounded-xl">
                                         <p className="text-[11px] font-black uppercase text-white/10 tracking-[0.4em] italic">Cluster currently offline</p>

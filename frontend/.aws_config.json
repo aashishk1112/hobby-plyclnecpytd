@@ -1,6 +1,6 @@
 {
   "REGION": "ap-south-1",
-  "USER_POOL_ID": "us-east-1_dummy",
-  "USER_POOL_CLIENT_ID": "dummy",
+  "USER_POOL_ID": "us-east-1_JkQTjhRLO",
+  "USER_POOL_CLIENT_ID": "4s68mt65ov86fb7gdbd6al9q01",
   "DYNAMODB_TABLE": "ScalarUsers"
 }

@@ -162,9 +162,10 @@ class PolymarketTracker:
                             # or handle it per-user. For now, we'll try to find the user_id from the session.
                             # In a multi-user setup, the tracker should probably be refactored to be user-aware.
                             # Using 'default-user' or the one from main.py
-                            from db import save_trade
+                            from db import save_trade, update_user_balance
                             trade_data["timestamp_raw"] = timestamp_sec or time.time()
                             save_trade(self.user_id, trade_data)
+                            update_user_balance(self.user_id, self.stats["balance"])
 
                             # Add to balance history for chart
                             self.balance_history.append({"timestamp": time.time(), "balance": self.stats["balance"]})
