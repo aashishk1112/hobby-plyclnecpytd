@@ -2,6 +2,8 @@ fastapi==0.109.2
 uvicorn==0.27.1
 httpx==0.26.0
 python-dotenv==1.0.1
-py-clob-client
 mangum==0.17.0
-razorpay==1.5.0
+razorpay==2.0.0
+boto3==1.34.40
+pyjwt==2.8.0
+python-jose[cryptography]==3.3.0

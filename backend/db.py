@@ -18,7 +18,7 @@ def handle_floats(obj):
     return obj
 
 # Load local config if exists (for LocalStack IDs)
-AWS_CONFIG_PATH = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "scripts", ".aws_config.json"))
+AWS_CONFIG_PATH = os.path.join(os.path.dirname(__file__), ".aws_config.json")
 AWS_CONFIG = {}
 if os.path.exists(AWS_CONFIG_PATH):
     with open(AWS_CONFIG_PATH, "r") as f:
@@ -27,7 +27,7 @@ if os.path.exists(AWS_CONFIG_PATH):
 # Environment variables (provided by Lambda or local setup)
 TABLE_NAME = os.getenv("DYNAMODB_TABLE", AWS_CONFIG.get("DYNAMODB_TABLE", "ScalarUsers"))
 TRADES_TABLE_NAME = os.getenv("TRADES_TABLE", AWS_CONFIG.get("TRADES_TABLE", "ScalarTrades"))
-IS_LOCAL = os.getenv("AWS_SAM_LOCAL") or os.getenv("LOCALSTACK_HOSTNAME") or True # Default to True for now
+IS_LOCAL = os.getenv("IS_LOCAL", "true").lower() == "true"
 
 def get_dynamodb_resource():
     if IS_LOCAL:
@@ -128,6 +128,37 @@ def get_user_trades(user_id: str, limit: int = 50):
     except ClientError as e:
         logger.error(f"Error fetching trades for {user_id}: {e.response['Error']['Message']}")
         return []
+
+def clear_user_trades(user_id: str):
+    """Delete all trade entries for a user from the ScalarTrades table."""
+    try:
+        # First, query to get all sort keys
+        response = trades_table.query(
+            KeyConditionExpression="userId = :uid",
+            ExpressionAttributeValues={":uid": user_id},
+            ProjectionExpression="userId, sortKey"
+        )
+        items = response.get("Items", [])
+        
+        while "LastEvaluatedKey" in response:
+            response = trades_table.query(
+                KeyConditionExpression="userId = :uid",
+                ExpressionAttributeValues={":uid": user_id},
+                ProjectionExpression="userId, sortKey",
+                ExclusiveStartKey=response["LastEvaluatedKey"]
+            )
+            items.extend(response.get("Items", []))
+
+        # Batch delete items
+        with trades_table.batch_writer() as batch:
+            for item in items:
+                batch.delete_item(Key={"userId": item["userId"], "sortKey": item["sortKey"]})
+        
+        logger.info(f"Cleared {len(items)} trades for user {user_id}")
+        return True
+    except ClientError as e:
+        logger.error(f"Error clearing trades for {user_id}: {e.response['Error']['Message']}")
+        return False
 
 def get_users():
     """Fetch all users to run tracker for."""

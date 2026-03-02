@@ -1,6 +1,14 @@
-from py_clob_client.client import ClobClient
-from py_clob_client.clob_types import ApiCreds, OrderArgs
-from py_clob_client.constants import POLYGON
+try:
+    from py_clob_client.client import ClobClient
+    from py_clob_client.clob_types import ApiCreds, OrderArgs
+    from py_clob_client.constants import POLYGON
+    HAS_CLOB_CLIENT = True
+except ImportError:
+    HAS_CLOB_CLIENT = False
+    class ClobClient: pass
+    class ApiCreds: pass
+    class OrderArgs: pass
+    POLYGON = "polygon"
 import os
 import logging
 

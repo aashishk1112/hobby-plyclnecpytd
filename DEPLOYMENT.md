@@ -1,43 +1,62 @@
-# Scalar Planck Deployment Guide
+# Scalar Planck Manual Deployment Guide
 
-This project supports both local containerized development and full AWS serverless deployment.
+This guide details the steps to manually deploy the application to AWS.
 
-## 1. Local Development (Docker)
-Run the entire stack (Frontend, Backend, and LocalStack) locally:
+## 1. Prerequisites
+- **AWS CLI**: Configured locally.
+- **Docker**: For building backend images.
+- **Node.js**: For building the frontend.
 
-```bash
-docker-compose up --build
-```
+## 2. Infrastructure Setup (AWS Console)
 
-- **Frontend**: [http://localhost:3001](http://localhost:3001)
-- **Backend**: [http://localhost:8001](http://localhost:8001) (via Lambda RIE)
-- **LocalStack**: [http://localhost:4566](http://localhost:4566) (DynamoDB, Cognito emulation)
+### DynamoDB
+Create two tables:
+1.  **ScalarUsers**: Partition key `userId` (String).
+2.  **ScalarTrades**: Partition key `userId` (String), Sort key `sortKey` (String).
 
-## 2. AWS Deployment (Production)
-Deploy to AWS with Lambda-based backend and S3-based static frontend.
+### Cognito
+1.  Create a **User Pool** (e.g., `ScalarUserPool`).
+2.  Add an **App Client** (e.g., `ScalarClient`).
+3.  (Optional) Add **Identity Providers** (Google).
+4.  Note down the **User Pool ID** and **Client ID**.
 
-### Prerequisites
-1.  **AWS CLI**: Configured with appropriate credentials.
-2.  **Terraform**: Installed and initialized.
-3.  **Docker**: Running (needed to build backend images).
+### Amazon ECR
+Create a repository named `scalar-planck-backend`.
 
-### One-Click Deployment
-Run the consolidated deployment script:
+## 3. Backend Deployment (Lambda)
 
-```bash
-chmod +x scripts/deploy.sh
-./scripts/deploy.sh
-```
+1.  **Build and Push Image**:
+    ```bash
+    aws ecr get-login-password --region <REGION> | docker login --username AWS --password-stdin <ACCOUNT_ID>.dkr.ecr.<REGION>.amazonaws.com
+    docker build -t scalar-planck-backend ./backend
+    docker tag scalar-planck-backend:latest <ACCOUNT_ID>.dkr.ecr.<REGION>.amazonaws.com/scalar-planck-backend:latest
+    docker push <ACCOUNT_ID>.dkr.ecr.<REGION>.amazonaws.com/scalar-planck-backend:latest
+    ```
+2.  **Create Lambda**:
+    - Choose **Container image**.
+    - Select the image from ECR.
+    - Set environment variables: `DYNAMODB_TABLE`, `TRADES_TABLE`, `USER_POOL_ID`, `USER_POOL_CLIENT_ID`, `MOCK_AUTH=False`.
+    - Grant the Lambda IAM Role permissions to access DynamoDB and Cognito.
+3.  **API Gateway**:
+    - Create an **HTTP API**.
+    - Add a **Proxy integration** to the Lambda function.
+    - Note down the **API Endpoint URL**.
 
-### What the script does:
-1.  **Backend**: Builds the Docker image and pushes it to Amazon ECR.
-2.  **Infrastructure**: Runs `terraform apply` to provision:
-    - **Lambda**: For FastAPI (via Mangum) and Tracker (Scheduled).
-    - **S3**: For static frontend hosting.
-    - **DynamoDB**: For user and trade persistence.
-    - **Cognito**: For Google and Twitter authentication.
-3.  **Frontend**: Builds the static site and syncs it to the S3 bucket.
+## 4. Frontend Deployment (S3)
 
-## 3. Configuration Notes
-- **Authentication**: Social login (Google/Twitter) requires valid Client IDs/Secrets in the AWS Cognito Console or via Terraform variables.
-- **Mock Mode**: For local testing without real AWS account credentials, ensure `MOCK_AUTH=True` in your environment.
+1.  **Configure**: Update `/frontend/.aws_config.json` with the production IDs and URLs.
+2.  **Build**:
+    ```bash
+    cd frontend
+    npm install
+    npm run build
+    ```
+3.  **S3 Hosting**:
+    - Create an S3 bucket (e.g., `scalar-planck-web`).
+    - Enable **Static website hosting**.
+    - Disable **Block Public Access**.
+    - Add a **Bucket Policy** for `s3:GetObject` (public read).
+    - Sync files: `aws s3 sync frontend/out s3://your-bucket-name --delete`.
+
+## 5. Local Development
+For local testing with LocalStack, use: `docker-compose up --build`.

@@ -14,12 +14,12 @@ if (awsConfig.USER_POOL_ID) {
             region: awsConfig.REGION,
             userPoolId: awsConfig.USER_POOL_ID,
             userPoolWebClientId: awsConfig.USER_POOL_CLIENT_ID,
-            identityPoolId: awsConfig.IDENTITY_POOL_ID,
+            identityPoolId: (awsConfig as any).IDENTITY_POOL_ID,
             oauth: {
-                domain: process.env.NEXT_PUBLIC_COGNITO_DOMAIN || "us-east-1jkqtjhrlo.auth.us-east-1.amazoncognito.com",
+                domain: (process.env.NEXT_PUBLIC_COGNITO_DOMAIN || "us-east-1jkqtjhrlo.auth.us-east-1.amazoncognito.com").replace(/^https?:\/\//, ""),
                 scope: ["email", "profile", "openid"],
-                redirectSignIn: process.env.NEXT_PUBLIC_REDIRECT_URL || "http://localhost:3001/",
-                redirectSignOut: process.env.NEXT_PUBLIC_REDIRECT_URL || "http://localhost:3001/",
+                redirectSignIn: (typeof window !== 'undefined' ? window.location.origin : "http://localhost:3001") + "/",
+                redirectSignOut: (typeof window !== 'undefined' ? window.location.origin : "http://localhost:3001") + "/",
                 responseType: "code"
             }
         }
@@ -136,34 +136,31 @@ export default function Home() {
             }
         });
 
-        // Browser Back Button Logout Functionality
-        const handleBackNavigation = (event: PopStateEvent) => {
-            console.log("Back button detected - logging out");
-            handleLogout();
-        };
-
-        window.addEventListener("popstate", handleBackNavigation);
-
         if (isAuthenticated) {
             fetchConfig();
-            fetchTrades();
             fetchAvailableCategories();
-            const interval = setInterval(() => {
-                fetchConfig();
-                fetchTrades();
-            }, 5000);
+
+            const configInterval = setInterval(fetchConfig, 10000);
+
             return () => {
-                clearInterval(interval);
+                clearInterval(configInterval);
                 unsubscribe();
-                window.removeEventListener("popstate", handleBackNavigation);
             };
         }
 
         return () => {
             unsubscribe();
-            window.removeEventListener("popstate", handleBackNavigation);
         };
     }, [isAuthenticated]);
+
+    // Separate effect for trades polling to be more efficient
+    useEffect(() => {
+        if (isAuthenticated && wallets.length > 0) {
+            fetchTrades();
+            const tradesInterval = setInterval(fetchTrades, 10000);
+            return () => clearInterval(tradesInterval);
+        }
+    }, [isAuthenticated, wallets.length]);
 
     useEffect(() => {
         const script = document.createElement("script");
@@ -185,7 +182,6 @@ export default function Home() {
     const fetchOptions = (method: string = "GET", body?: BodyInit): RequestInit => ({
         method,
         headers: getAuthHeaders(),
-        credentials: "include",
         ...(body !== undefined && { body }),
     });
 
@@ -432,19 +428,40 @@ export default function Home() {
     }, [trades, selectedWallet, searchAddress, sideFilter]);
 
     const handleLogout = async () => {
-        try {
-            if (awsConfig.USER_POOL_ID) {
-                await Auth.signOut();
-            }
-        } catch (err) {
-            console.error("Error signing out:", err);
-        }
+        // Clear local state first for immediate UI response
+        console.log("Initiating logout...");
         setIsAuthenticated(false);
         setUser(null);
         localStorage.removeItem("scalar_token");
         localStorage.removeItem("scalar_user");
         setActiveTab("IDENTITY");
-        console.log("Logged out successfully");
+
+        try {
+            if (awsConfig.USER_POOL_ID && awsConfig.USER_POOL_ID !== "us-east-1_dummy") {
+                console.log("Terminating Cognito session via Amplify...");
+                // Note: Auth.signOut() with OAuth will redirect to the logout endpoint
+                await Auth.signOut();
+            }
+        } catch (err) {
+            console.error("Cognito sign out error (force clearing local):", err);
+        } finally {
+            // Force clear again just in case
+            localStorage.clear();
+            console.log("Logout complete (local state forced).");
+        }
+    };
+
+    const forceClearSession = () => {
+        const confirmed = window.confirm("This will force clear ALL local session data and reload the application. Use this if you are stuck in a login/logout loop. Proceed?");
+        if (!confirmed) return;
+
+        localStorage.clear();
+        sessionStorage.clear();
+        // Clear cookies if possible (Amplify uses them sometimes)
+        document.cookie.split(";").forEach((c) => {
+            document.cookie = c.replace(/^ +/, "").replace(/=.*/, "=;expires=" + new Date().toUTCString() + ";path=/");
+        });
+        window.location.href = window.location.origin + "/";
     };
 
     const handleSocialLogin = async (provider: "Google" | "Twitter") => {
@@ -462,8 +479,9 @@ export default function Home() {
             setActiveTab("OVERVIEW");
         };
 
-        // If there is no real Cognito config, always use mock login
-        if (!awsConfig.USER_POOL_ID || !awsConfig.USER_POOL_CLIENT_ID) {
+        // Use mock login if explicitly enabled or if real config is missing
+        const isMockEnabled = process.env.NEXT_PUBLIC_MOCK_AUTH === "true";
+        if (isMockEnabled || !awsConfig.USER_POOL_ID || !awsConfig.USER_POOL_CLIENT_ID || awsConfig.USER_POOL_ID.includes("dummy")) {
             fallbackMockLogin();
             return;
         }
@@ -627,12 +645,20 @@ export default function Home() {
                                                 <p className="text-[12px] font-black text-white text-[#0075ff]">US-EAST-1</p>
                                             </div>
                                         </div>
-                                        <button
-                                            onClick={handleLogout}
-                                            className="w-full py-4 bg-rose-500/10 border border-rose-500/20 rounded-xl text-rose-500 font-black text-[10px] tracking-widest uppercase hover:bg-rose-500 hover:text-white transition-all shadow-lg shadow-rose-500/10"
-                                        >
-                                            De-Authorize Terminal
-                                        </button>
+                                        <div className="flex flex-col gap-3 pt-2">
+                                            <button
+                                                onClick={handleLogout}
+                                                className="w-full py-4 bg-rose-500/10 border border-rose-500/20 rounded-xl text-rose-500 font-black text-[10px] tracking-widest uppercase hover:bg-rose-500 hover:text-white transition-all shadow-lg shadow-rose-500/10"
+                                            >
+                                                De-Authorize Terminal
+                                            </button>
+                                            <button
+                                                onClick={forceClearSession}
+                                                className="w-full py-3 text-white/20 hover:text-white/40 font-bold text-[9px] uppercase tracking-[0.2em] transition-colors"
+                                            >
+                                                Force Clear Session & Reload
+                                            </button>
+                                        </div>
                                     </div>
                                 ) : (
                                     <>
@@ -1098,48 +1124,137 @@ export default function Home() {
                                             <p className="text-[10px] font-black italic uppercase tracking-[0.4em]">Zero Override</p>
                                         </div>
                                     )}
-
-                                    <div className="bg-black border border-white/10 p-10 rounded-xl shadow-2xl space-y-12">
-                                        <div className="space-y-4">
-                                            <label className="block text-[11px] font-black uppercase text-white/40 tracking-widest">Paper Trading Initialization</label>
-                                            <div className="flex gap-4">
-                                                <div className="relative flex-1">
-                                                    <span className="absolute left-6 top-1/2 -translate-y-1/2 text-white/40 font-bold">$</span>
-                                                    <input
-                                                        type="text"
-                                                        value={initialBalanceInput}
-                                                        onChange={(e) => setInitialBalanceInput(e.target.value)}
-                                                        className="w-full bg-white/5 border border-white/10 rounded-xl pl-12 pr-6 py-5 text-[16px] font-black outline-none focus:border-white focus:bg-white/10 transition-all text-white placeholder:text-white/10"
-                                                        placeholder="100.00"
-                                                    />
-                                                </div>
-                                                <button
-                                                    onClick={updateInitialBalance}
-                                                    className="px-8 bg-white text-black rounded-xl font-black text-[11px] uppercase tracking-widest transition-all hover:bg-white/90 active:scale-95 whitespace-nowrap"
-                                                >
-                                                    Apply Capital
-                                                </button>
-                                            </div>
-                                            <p className="text-[10px] text-white/20 font-bold italic uppercase tracking-wider">Initial simulation balance used for performance delta calculations.</p>
-                                        </div>
-
-                                        <div className="pt-8 border-t border-white/5">
-                                            <div className="flex items-center justify-between mb-6">
-                                                <div>
-                                                    <h4 className="text-[14px] font-black uppercase text-white">Simulation Engine</h4>
-                                                    <p className="text-[11px] text-white/30 font-bold mt-1 uppercase tracking-widest italic">Current mode: Paper Trading</p>
-                                                </div>
-                                                <div className="w-12 h-6 bg-white/10 rounded-full relative p-1 cursor-not-allowed">
-                                                    <div className="w-4 h-4 bg-white/20 rounded-full" />
-                                                </div>
-                                            </div>
-                                        </div>
-                                    </div>
                                 </div>
-                                )}
+                            </section>
+                        </div>
+                    </div>
+                )}
+
+                {activeTab === "SUBSCRIPTION" && (
+                    <div className="animate-in fade-in zoom-in-95 duration-500 max-w-4xl mx-auto">
+                        <div className="mb-12 text-center">
+                            <h1 className="text-[40px] font-black uppercase tracking-tighter italic mb-3">Service Allocation</h1>
+                            <p className="text-white/30 text-[12px] font-bold tracking-[0.3em] uppercase italic">Manage institutional cluster limits</p>
                         </div>
 
-                        <style jsx global>{`
+                        <div className="grid grid-cols-1 md:grid-cols-2 gap-8 mb-12">
+                            {/* Status Card */}
+                            <div className="bg-white/[0.03] border border-white/10 p-10 rounded-2xl shadow-xl backdrop-blur-xl group hover:border-[#0075ff]/50 transition-all">
+                                <div className="flex items-center gap-4 mb-8">
+                                    <div className="w-12 h-12 rounded-xl bg-[#0075ff]/20 flex items-center justify-center border border-[#0075ff]/30">
+                                        <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="#0075ff" strokeWidth="2.5"><path d="M12 2v20M17 5H9.5a3.5 3.5 0 000 7h5a3.5 3.5 0 010 7H6" /></svg>
+                                    </div>
+                                    <div>
+                                        <h3 className="text-[14px] font-black uppercase text-white tracking-wider">Allocation Status</h3>
+                                        <span className="text-[10px] font-black text-[#01b574] uppercase tracking-[0.2em]">Institutional Tier</span>
+                                    </div>
+                                </div>
+
+                                <div className="space-y-6">
+                                    <div>
+                                        <div className="flex justify-between items-end mb-3">
+                                            <span className="text-[11px] font-black text-white/40 uppercase tracking-widest">Node Utilization</span>
+                                            <span className="text-[18px] font-black text-white">{wallets.length} <span className="text-[12px] text-white/20">/ {2 + ((stats as any).extraSlots || 0)} UNITS</span></span>
+                                        </div>
+                                        <div className="h-2 w-full bg-white/5 rounded-full overflow-hidden p-[1px]">
+                                            <div
+                                                className="h-full bg-gradient-to-r from-[#0075ff] to-[#01b574] rounded-full transition-all duration-1000"
+                                                style={{ width: `${Math.min(100, (wallets.length / (2 + ((stats as any).extraSlots || 0))) * 100)}%` }}
+                                            />
+                                        </div>
+                                    </div>
+                                    <div className="flex items-center justify-between pt-4 border-t border-white/5">
+                                        <span className="text-[11px] font-black text-white/40 uppercase tracking-widest">Base Cluster Allocation</span>
+                                        <span className="text-[12px] font-black text-white">2 NODES</span>
+                                    </div>
+                                    <div className="flex items-center justify-between">
+                                        <span className="text-[11px] font-black text-white/40 uppercase tracking-widest">Purchased Expansion Slots</span>
+                                        <span className="text-[12px] font-black text-[#0075ff]">{(stats as any).extraSlots || 0} NODES</span>
+                                    </div>
+                                </div>
+                            </div>
+
+                            {/* Payment Card */}
+                            <div className="bg-[#0075ff]/5 border border-[#0075ff]/20 p-10 rounded-2xl shadow-xl flex flex-col justify-between relative overflow-hidden group">
+                                <div className="absolute -top-24 -right-24 w-64 h-64 bg-[#0075ff]/10 rounded-full blur-3xl group-hover:bg-[#0075ff]/20 transition-all" />
+
+                                <div>
+                                    <h3 className="text-[20px] font-black uppercase italic tracking-tight mb-2">Expansion Module</h3>
+                                    <p className="text-[12px] text-white/60 leading-relaxed mb-8">
+                                        Provision additional high-latency execution nodes to your cluster. No subscription required.
+                                    </p>
+                                    <div className="flex items-baseline gap-2 mb-8">
+                                        <span className="text-4xl font-black text-white">$5</span>
+                                        <span className="text-[12px] font-bold text-white/40 uppercase tracking-widest">/ NODE UNIT</span>
+                                    </div>
+                                </div>
+
+                                <button
+                                    onClick={handleExtraSlotPurchase}
+                                    className="w-full py-5 bg-white text-black font-black text-[11px] uppercase tracking-[0.2em] rounded-xl hover:bg-white/90 active:scale-[0.98] transition-all shadow-2xl relative z-10"
+                                >
+                                    Provision Expansion Node
+                                </button>
+                            </div>
+                        </div>
+
+                        <div className="bg-white/5 border border-white/10 p-8 rounded-xl backdrop-blur-md">
+                            <div className="flex items-center gap-4 text-white/40 italic">
+                                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><circle cx="12" cy="12" r="10" /><path d="M12 16v-4M12 8h.01" /></svg>
+                                <p className="text-[11px] font-bold tracking-wide uppercase">All transactions are processed through Razorpay Secure Protocol. Expansion slots are permanent and linked to your Terminal Identity.</p>
+                            </div>
+                        </div>
+                    </div>
+                )}
+
+                {activeTab === "SETTINGS" && (
+                    <div className="animate-in fade-in zoom-in-95 duration-500 max-w-2xl mx-auto">
+                        <div className="mb-10 text-center">
+                            <h1 className="text-[32px] font-black uppercase tracking-tighter mb-2">Platform Configuration</h1>
+                            <p className="text-white/30 text-[12px] font-bold tracking-widest uppercase italic">Institutional grade system parameters</p>
+                        </div>
+
+                        <div className="bg-black border border-white/10 p-10 rounded-xl shadow-2xl space-y-12">
+                            <div className="space-y-4">
+                                <label className="block text-[11px] font-black uppercase text-white/40 tracking-widest">Paper Trading Initialization</label>
+                                <div className="flex gap-4">
+                                    <div className="relative flex-1">
+                                        <span className="absolute left-6 top-1/2 -translate-y-1/2 text-white/40 font-bold">$</span>
+                                        <input
+                                            type="text"
+                                            value={initialBalanceInput}
+                                            onChange={(e) => setInitialBalanceInput(e.target.value)}
+                                            className="w-full bg-white/5 border border-white/10 rounded-xl pl-12 pr-6 py-5 text-[16px] font-black outline-none focus:border-white focus:bg-white/10 transition-all text-white placeholder:text-white/10"
+                                            placeholder="100.00"
+                                        />
+                                    </div>
+                                    <button
+                                        onClick={updateInitialBalance}
+                                        className="px-8 bg-white text-black rounded-xl font-black text-[11px] uppercase tracking-widest transition-all hover:bg-white/90 active:scale-95 whitespace-nowrap"
+                                    >
+                                        Apply Capital
+                                    </button>
+                                </div>
+                                <p className="text-[10px] text-white/20 font-bold italic uppercase tracking-wider">Initial simulation balance used for performance delta calculations.</p>
+                            </div>
+
+                            <div className="pt-8 border-t border-white/5">
+                                <div className="flex items-center justify-between mb-6">
+                                    <div>
+                                        <h4 className="text-[14px] font-black uppercase text-white">Simulation Engine</h4>
+                                        <p className="text-[11px] text-white/30 font-bold mt-1 uppercase tracking-widest italic">Current mode: Paper Trading</p>
+                                    </div>
+                                    <div className="w-12 h-6 bg-white/10 rounded-full relative p-1 cursor-not-allowed">
+                                        <div className="w-4 h-4 bg-white/20 rounded-full" />
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                )}
+            </div>
+
+            <style jsx global>{`
                 @import url('https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&family=Inter:wght@400;500;600;700;800;900&display=swap');
                 
                 body {
@@ -1179,6 +1294,6 @@ export default function Home() {
                 .slide-in-from-right-4 { animation-name: slide-in-from-right-4; }
                 .slide-in-from-top-6 { animation-name: slide-in-from-top-6; }
             `}</style>
-                    </main>
-                );
+        </main>
+    );
 }

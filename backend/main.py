@@ -11,6 +11,7 @@ from mangum import Mangum
 import jwt as pyjwt # renamed to avoid conflict with jose.jwt
 from jose import jwt
 import json
+import time
 from db import get_user_data, update_user_data, add_wallet as db_add_wallet, remove_wallet as db_remove_wallet
 
 from tracker import PolymarketTracker
@@ -32,13 +33,18 @@ tracker = PolymarketTracker("local-test-user", [], trade_history, {"balance": 10
 RAZORPAY_KEY_ID = os.getenv("RAZORPAY_KEY_ID", "rzp_test_mock")
 RAZORPAY_KEY_SECRET = os.getenv("RAZORPAY_KEY_SECRET", "mock_secret")
 razor_client = razorpay.Client(auth=(RAZORPAY_KEY_ID, RAZORPAY_KEY_SECRET))
-# Load AWS Config for JWT verification
-AWS_CONFIG_PATH = os.path.join(os.path.dirname(__file__), "..", ".aws_config.json")
-with open(AWS_CONFIG_PATH, "r") as f:
-    aws_config = json.load(f)
+# Load AWS Config (optional for local/LocalStack, highly recommended for production)
+AWS_CONFIG_PATH = os.path.join(os.path.dirname(__file__), ".aws_config.json")
+aws_config = {}
+if os.path.exists(AWS_CONFIG_PATH):
+    try:
+        with open(AWS_CONFIG_PATH, "r") as f:
+            aws_config = json.load(f)
+    except Exception as e:
+        print(f"Warning: Failed to load config from {AWS_CONFIG_PATH}: {e}")
 
-REGION = aws_config.get("REGION", "us-east-1")
-USER_POOL_ID = aws_config.get("USER_POOL_ID")
+REGION = os.getenv("AWS_REGION", aws_config.get("REGION", "ap-south-1"))
+USER_POOL_ID = os.getenv("USER_POOL_ID", aws_config.get("USER_POOL_ID"))
 LOCALSTACK_ENDPOINT = os.getenv("LOCALSTACK_ENDPOINT")
 
 if USER_POOL_ID and not USER_POOL_ID.endswith("_dummy"):
@@ -80,6 +86,8 @@ async def get_current_user(request):
     
     # Check if mock auth is enabled (default to False for production)
     is_mock = os.getenv("MOCK_AUTH", "False").lower() == "true"
+    if is_mock:
+        return "local-test-user"
     
     if not auth_header or not auth_header.startswith("Bearer "):
         if is_mock:
@@ -148,7 +156,14 @@ async def auth_middleware(request, call_next):
 # we'll ensure the headers are allowed.
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["http://localhost:3000", "http://localhost:3001", "http://127.0.0.1:3000", "http://127.0.0.1:3001"],
+    allow_origins=[
+        "http://localhost:3000", 
+        "http://localhost:3001", 
+        "http://127.0.0.1:3000", 
+        "http://127.0.0.1:3001", 
+        "http://scalar-planck-web-1772426438.s3-website.ap-south-1.amazonaws.com",
+        os.getenv("FRONTEND_URL", "http://scalar-planck-web-1772426438.s3-website.ap-south-1.amazonaws.com")
+    ],
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
@@ -173,12 +188,17 @@ async def get_config(request: Request):
     # Sync tracker state for this specific user call
     tracker.tracked_addresses = data.get("trackedWallets", [])
     tracker.disabled_addresses = set(data.get("disabledWallets", []))
-    # Only sync initial_balance from DB when tracker still has default (avoids overwriting
-    # in-memory state after capital reset with stale/eventually-consistent DB data)
+    
+    # Sync guard: Only sync stats from DB if we haven't recently reset them in memory.
+    # This prevents eventual consistency issues from overwriting a fresh 100.0 reset with stale DB data.
+    skip_db_sync = (time.time() - getattr(tracker, 'last_reset_at', 0)) < 10
     default_initial = 100.0
-    if tracker.stats.get("initial_balance", default_initial) == default_initial:
-        tracker.stats["initial_balance"] = float(data.get("initialBalance", default_initial))
-    # Never overwrite balance from DB; it is only updated by tracker and update_config
+    
+    if not skip_db_sync:
+        if tracker.stats.get("initial_balance", default_initial) == default_initial:
+            tracker.stats["initial_balance"] = float(data.get("initialBalance", default_initial))
+        # Optional: Sync balance if not skipping
+        # tracker.stats["balance"] = float(data.get("balance", tracker.stats["balance"]))
 
     return {
         "tracked_wallets": tracker.tracked_addresses,
@@ -208,11 +228,13 @@ async def update_config(request: Request, initial_balance: Optional[float] = Non
 
         # Reset current balance and trade history when capital is re-applied
         tracker.stats["balance"] = initial_balance
+        tracker.last_reset_at = time.time()  # Mark reset time for sync guard
         trade_history.clear()
+        db.clear_user_trades(user_id) # Hard delete from DynamoDB
         await tracker.clear_cache()
 
         update_user_data(user_id, data)
-        logger.info(f"Re-initialized capital for {user_id} to: {initial_balance}. History cleared.")
+        logger.info(f"Re-initialized capital for {user_id} to: {initial_balance}. History cleared from memory and DB.")
 
     # Return explicit numbers so frontend always gets correct types
     return {
@@ -311,6 +333,10 @@ async def add_wallet(request: Request, address: str):
     current_wallets = data.get("trackedWallets", [])
     extra_slots = data.get("extraSlots", 0)
     
+    # Duplicate check first
+    if address in current_wallets:
+        raise HTTPException(status_code=400, detail="Address is already being tracked.")
+        
     # Enforce limits: Free tier is 2 + extra_slots
     if subscription_status == "free" and len(current_wallets) >= (2 + extra_slots):
         raise HTTPException(status_code=402, detail="Address limit reached. Please purchase an additional slot for $5.")
