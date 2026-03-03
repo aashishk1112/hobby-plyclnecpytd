@@ -72,6 +72,8 @@ export default function Home() {
     const [terminatedWallets, setTerminatedWallets] = useState<string[]>([]);
     const [initialBalanceInput, setInitialBalanceInput] = useState("100.0");
     const [profiles, setProfiles] = useState<Record<string, any>>({});
+    const [balanceThreshold, setBalanceThreshold] = useState("0.0");
+    const [userProfile, setUserProfile] = useState<{ name?: string | null; picture?: string | null }>({ name: null, picture: null });
 
     // Auth State
     const [isAuthenticated, setIsAuthenticated] = useState(false);
@@ -227,6 +229,13 @@ export default function Home() {
                     // Only initialize the input field if it's currently empty or at the default "100.0"
                     if (initialBalanceInput === "100.0" || initialBalanceInput === "") {
                         setInitialBalanceInput((Number.isFinite(i) ? i : 100).toString());
+                    }
+
+                    if (data.balance_threshold !== undefined) {
+                        setBalanceThreshold(data.balance_threshold.toString());
+                    }
+                    if (data.user_profile) {
+                        setUserProfile(data.user_profile);
                     }
                 }
                 if (Array.isArray(data.balance_history) && !skipStatsFromPoll) setBalanceHistory(data.balance_history);
@@ -412,27 +421,40 @@ export default function Home() {
 
     const updateInitialBalance = async () => {
         const amount = parseFloat(initialBalanceInput);
-        if (isNaN(amount)) return;
+        const threshold = parseFloat(balanceThreshold);
+        if (isNaN(amount) && isNaN(threshold)) return;
 
-        const confirmed = window.confirm(`This will RESET all current trade history and set the initial capital to $${amount}. Proceed?`);
+        const isOnlyThreshold = !isNaN(threshold) && isNaN(amount);
+        const msg = isOnlyThreshold 
+            ? `Update execution threshold to $${threshold}?` 
+            : `This will RESET all current trade history and set the initial capital to $${amount}. Proceed?`;
+
+        const confirmed = window.confirm(msg);
         if (!confirmed) return;
 
         try {
-            const res = await fetch(`${API_BASE}/config/update?initial_balance=${amount}`, fetchOptions("POST"));
+            let url = `${API_BASE}/config/update?`;
+            if (!isNaN(amount)) url += `initial_balance=${amount}&`;
+            if (!isNaN(threshold)) url += `balance_threshold=${threshold}`;
+
+            const res = await fetch(url, fetchOptions("POST"));
             if (res.ok) {
                 const data = await res.json();
                 const newStats = data.stats || {};
-                const balance = Number(newStats.balance);
-                const initial_balance = Number(newStats.initial_balance);
-                setStats({
-                    balance: Number.isFinite(balance) ? balance : amount,
-                    initial_balance: Number.isFinite(initial_balance) ? initial_balance : amount,
-                });
-                setBalanceHistory([{ timestamp: Date.now() / 1000, balance: Number.isFinite(balance) ? balance : amount }]);
-                setTrades([]);
-                lastCapitalResetAt.current = Date.now();
+                if (!isNaN(amount)) {
+                    const balance = Number(newStats.balance);
+                    const initial_balance = Number(newStats.initial_balance);
+                    setStats({
+                        balance: Number.isFinite(balance) ? balance : amount,
+                        initial_balance: Number.isFinite(initial_balance) ? initial_balance : amount,
+                    });
+                    setBalanceHistory([{ timestamp: Date.now() / 1000, balance: Number.isFinite(balance) ? balance : amount }]);
+                    setTrades([]);
+                    lastCapitalResetAt.current = Date.now();
+                }
                 fetchTrades();
-                console.log("Capital re-applied and stream reset");
+                fetchConfig();
+                console.log("Configuration updated");
             } else if (res.status === 401) {
                 setIsAuthenticated(false);
                 setUser(null);
@@ -440,7 +462,7 @@ export default function Home() {
                 localStorage.removeItem("scalar_user");
                 setActiveTab("IDENTITY");
             }
-        } catch (error) { console.error("Failed to update initial balance:", error); }
+        } catch (error) { console.error("Failed to update config:", error); }
     };
 
     const filteredTrades = useMemo(() => {
@@ -594,7 +616,7 @@ export default function Home() {
                     {isAuthenticated && user && (
                         <div className="flex items-center gap-3 pl-2">
                             <div className="text-right hidden sm:block">
-                                <p className="text-[12px] font-black text-white/80 leading-none">{(user.email || user.username).toUpperCase()}</p>
+                                <p className="text-[12px] font-black text-white/80 leading-none">{(userProfile.name || user.email || user.username).toUpperCase()}</p>
                                 <div className="flex items-center gap-2 mt-1 justify-end">
                                     <p className={`text-[10px] font-bold ${(stats as any).subscriptionStatus === 'pro' ? 'text-[#01b574]' : 'text-white/40'}`}>
                                         {(stats as any).subscriptionStatus === 'pro' ? 'PRO ACCOUNT' : 'FREE ACCOUNT'}
@@ -610,7 +632,7 @@ export default function Home() {
                                 </div>
                             </div>
                             <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-[#1a1f37] to-[#0f1535] border border-white/10 flex items-center justify-center overflow-hidden">
-                                <img src={user.picture || `https://api.dicebear.com/7.x/avataaars/svg?seed=${user.username}`} alt="Avatar" className="w-8 h-8 opacity-80" />
+                                <img src={userProfile.picture || user.picture || `https://api.dicebear.com/7.x/avataaars/svg?seed=${user.username}`} alt="Avatar" className="w-8 h-8 opacity-80" />
                             </div>
                         </div>
                     )}
@@ -653,10 +675,10 @@ export default function Home() {
                                     <div className="space-y-8 animate-in fade-in slide-in-from-left-4">
                                         <div className="flex items-center gap-6">
                                             <div className="w-24 h-24 rounded-2xl bg-white/10 border border-white/10 p-1 flex items-center justify-center overflow-hidden shadow-2xl">
-                                                <img src={user.picture} alt="Profile" className="w-full h-full rounded-xl object-cover" />
+                                                <img src={userProfile.picture || user.picture} alt="Profile" className="w-full h-full rounded-xl object-cover" />
                                             </div>
                                             <div>
-                                                <h3 className="text-[18px] font-black text-white tracking-tight leading-none mb-2 capitalize">{user.username}</h3>
+                                                <h3 className="text-[18px] font-black text-white tracking-tight leading-none mb-2 capitalize">{userProfile.name || user.username}</h3>
                                                 <p className="text-[12px] font-bold text-white/40 mb-3">{user.email}</p>
                                                 <span className="px-3 py-1 bg-[#01b574]/10 border border-[#01b574]/20 rounded-full text-[9px] font-black text-[#01b574] uppercase tracking-widest">Authorized</span>
                                             </div>
@@ -1282,6 +1304,29 @@ export default function Home() {
                                     </button>
                                 </div>
                                 <p className="text-[10px] text-white/20 font-bold italic uppercase tracking-wider">Initial simulation balance used for performance delta calculations.</p>
+                            </div>
+
+                            <div className="space-y-4 pt-8 border-t border-white/5">
+                                <label className="block text-[11px] font-black uppercase text-white/40 tracking-widest">Execution Threshold (Min Balance)</label>
+                                <div className="flex gap-4">
+                                    <div className="relative flex-1">
+                                        <span className="absolute left-6 top-1/2 -translate-y-1/2 text-white/40 font-bold">$</span>
+                                        <input
+                                            type="text"
+                                            value={balanceThreshold}
+                                            onChange={(e) => setBalanceThreshold(e.target.value)}
+                                            className="w-full bg-white/5 border border-white/10 rounded-xl pl-12 pr-6 py-5 text-[16px] font-black outline-none focus:border-white focus:bg-white/10 transition-all text-white placeholder:text-white/10"
+                                            placeholder="0.00"
+                                        />
+                                    </div>
+                                    <button
+                                        onClick={updateInitialBalance}
+                                        className="px-8 bg-white text-black rounded-xl font-black text-[11px] uppercase tracking-widest transition-all hover:bg-white/90 active:scale-95 whitespace-nowrap"
+                                    >
+                                        Set Threshold
+                                    </button>
+                                </div>
+                                <p className="text-[10px] text-white/20 font-bold italic uppercase tracking-wider">Engine will skip all trade replication if balance falls below this amount.</p>
                             </div>
 
                             <div className="pt-8 border-t border-white/5">

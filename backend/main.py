@@ -115,7 +115,11 @@ async def get_current_user(request):
                     "verify_aud": False # In production, verify against App Client ID
                 }
             )
-            return payload.get("sub") or payload.get("username")
+            return {
+                "sub": payload.get("sub"),
+                "name": payload.get("name"),
+                "picture": payload.get("picture")
+            }
         except Exception as e:
             logger.error(f"JWT Verification failed: {e}")
             raise HTTPException(status_code=401, detail=f"Invalid token: {str(e)}")
@@ -125,11 +129,15 @@ async def get_current_user(request):
             payload = jwt.get_unverified_claims(token)
             user_id = payload.get("sub") or payload.get("username")
             if not user_id and is_mock:
-                return f"user-{token}"
-            return user_id
+                return {"sub": f"user-{token}", "name": f"Mock User {token}", "picture": None}
+            return {
+                "sub": user_id,
+                "name": payload.get("name"),
+                "picture": payload.get("picture")
+            }
         except Exception:
             if is_mock:
-                return f"user-{token}"
+                return {"sub": f"user-{token}", "name": f"Mock User {token}", "picture": None}
             raise HTTPException(status_code=401, detail="Invalid token")
 
 @app.middleware("http")
@@ -176,8 +184,15 @@ async def auth_middleware(request: Request, call_next):
         return await call_next(request)
     
     try:
-        user_id = await get_current_user(request)
-        request.state.user_id = user_id
+        user_info = await get_current_user(request)
+        if isinstance(user_info, dict):
+            request.state.user_id = user_info["sub"]
+            request.state.user_name = user_info.get("name")
+            request.state.user_picture = user_info.get("picture")
+        else:
+            request.state.user_id = user_info
+            request.state.user_name = None
+            request.state.user_picture = None
     except HTTPException as e:
         # If we return a response here, it MUST go through CORSMiddleware
         # So CORSMiddleware must be added AFTER this middleware is defined.
@@ -208,11 +223,23 @@ async def get_config(request: Request):
     user_id = request.state.user_id
     data = get_user_data(user_id)
     if data is None:
-        data = {"userId": user_id, "trackedWallets": [], "disabledWallets": [], "initialBalance": 100.0, "filters": []}
+        data = {"userId": user_id, "trackedWallets": [], "disabledWallets": [], "initialBalance": 100.0, "balanceThreshold": 0.0, "filters": []}
+
+    # Update profile info if present in token but not in DB
+    updated = False
+    if request.state.user_name and data.get("name") != request.state.user_name:
+        data["name"] = request.state.user_name
+        updated = True
+    if request.state.user_picture and data.get("picture") != request.state.user_picture:
+        data["picture"] = request.state.user_picture
+        updated = True
+    if updated:
+        update_user_data(user_id, data)
 
     # Sync tracker state for this specific user call
     tracker.tracked_addresses = data.get("trackedWallets", [])
     tracker.disabled_addresses = set(data.get("disabledWallets", []))
+    tracker.balance_threshold = float(data.get("balanceThreshold", 0.0))
     
     # Sync guard: Only sync stats from DB if we haven't recently reset them in memory.
     # This prevents eventual consistency issues from overwriting a fresh 100.0 reset with stale DB data.
@@ -239,15 +266,26 @@ async def get_config(request: Request):
         "balance_history": tracker.balance_history,
         "subscription_status": data.get("subscriptionStatus", "free"),
         "subscription_id": data.get("subscriptionId"),
-        "extra_slots": data.get("extraSlots", 0)
+        "extra_slots": data.get("extraSlots", 0),
+        "balance_threshold": float(data.get("balanceThreshold", 0.0)),
+        "user_profile": {
+            "name": data.get("name"),
+            "picture": data.get("picture")
+        }
     }
 
 @app.post("/config/update")
-async def update_config(request: Request, initial_balance: Optional[float] = None):
+async def update_config(request: Request, initial_balance: Optional[float] = None, balance_threshold: Optional[float] = None):
     user_id = request.state.user_id
     data = get_user_data(user_id)
     if data is None:
-        data = {"userId": user_id, "trackedWallets": [], "disabledWallets": [], "initialBalance": 100.0, "filters": []}
+        data = {"userId": user_id, "trackedWallets": [], "disabledWallets": [], "initialBalance": 100.0, "balanceThreshold": 0.0, "filters": []}
+
+    if balance_threshold is not None:
+        data["balanceThreshold"] = float(balance_threshold)
+        tracker.balance_threshold = float(balance_threshold)
+        update_user_data(user_id, data)
+        logger.info(f"Updated balance threshold for {user_id} to: {balance_threshold}")
 
     if initial_balance is not None:
         initial_balance = float(initial_balance)

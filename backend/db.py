@@ -49,6 +49,9 @@ def get_user_data(user_id: str):
             "terminatedWallets": [],
             "initialBalance": 100.0,
             "balance": 100.0,
+            "balanceThreshold": 0.0,
+            "name": None,
+            "picture": None,
             "subscriptionStatus": "free", # free, pro, cancelled
             "subscriptionId": None,
             "extraSlots": 0  # Number of additional slots purchased

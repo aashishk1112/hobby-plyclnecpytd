@@ -16,6 +16,7 @@ class PolymarketTracker:
         self.disabled_addresses = set() # Addresses to skip during monitoring
         self.trade_history = trade_history
         self.stats = stats if stats is not None else {"balance": 100.0, "initial_balance": 100.0}
+        self.balance_threshold = float(stats.get("balance_threshold", 0.0)) if stats else 0.0
         self.category_filters = category_filters if category_filters is not None else []
         self.balance_history = [{"timestamp": time.time(), "balance": self.stats["balance"]}]
         self.running = False
@@ -126,6 +127,11 @@ class PolymarketTracker:
                             
                             formatted_time = time.strftime("%H:%M:%S", time.localtime(timestamp_sec)) if timestamp_sec else time.strftime("%H:%M:%S")
                             
+                            # Check balance threshold
+                            if self.stats["balance"] < self.balance_threshold:
+                                logger.warning(f"THRESHOLD: Skipping trade execution. Balance ${self.stats['balance']:.2f} is below threshold ${self.balance_threshold:.2f}")
+                                continue
+
                             # Update paper balance
                             if side == "BUY":
                                 self.stats["balance"] -= total_cost
