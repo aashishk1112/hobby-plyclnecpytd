@@ -5,9 +5,12 @@ try:
     HAS_CLOB_CLIENT = True
 except ImportError:
     HAS_CLOB_CLIENT = False
-    class ClobClient: pass
-    class ApiCreds: pass
-    class OrderArgs: pass
+    class ClobClient:
+        def __init__(self, *args, **kwargs): pass
+    class ApiCreds:
+        def __init__(self, *args, **kwargs): pass
+    class OrderArgs:
+        def __init__(self, *args, **kwargs): pass
     POLYGON = "polygon"
 import os
 import logging
@@ -20,7 +23,8 @@ class TradeExecutor:
         self.api_secret = os.getenv("POLY_API_SECRET")
         self.api_passphrase = os.getenv("POLY_API_PASSPHRASE")
         self.private_key = os.getenv("POLY_PRIVATE_KEY")
-        self.paper_trading = os.getenv("PAPER_TRADING", "True") == "True"
+        pt_env = os.getenv("PAPER_TRADING", "True")
+        self.paper_trading = pt_env.lower() == "true"
         
         if not self.paper_trading:
             self.client = ClobClient(

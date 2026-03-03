@@ -27,7 +27,7 @@ if os.path.exists(AWS_CONFIG_PATH):
 # Environment variables (provided by Lambda or local setup)
 TABLE_NAME = os.getenv("DYNAMODB_TABLE", AWS_CONFIG.get("DYNAMODB_TABLE", "ScalarUsers"))
 TRADES_TABLE_NAME = os.getenv("TRADES_TABLE", AWS_CONFIG.get("TRADES_TABLE", "ScalarTrades"))
-IS_LOCAL = os.getenv("IS_LOCAL", "true").lower() == "true"
+IS_LOCAL = os.getenv("IS_LOCAL", "false").lower() == "true"
 
 def get_dynamodb_resource():
     if IS_LOCAL:

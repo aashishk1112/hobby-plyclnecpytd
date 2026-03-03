@@ -3,6 +3,7 @@
 import { useState, useEffect, useMemo, useRef } from "react";
 import { motion, Reorder, AnimatePresence } from "framer-motion";
 import { Amplify, Auth, Hub } from "aws-amplify";
+import { loadStripe } from "@stripe/stripe-js";
 
 // Load config from json (assuming it will be populated)
 // In a real build process, these would be env vars
@@ -175,16 +176,21 @@ export default function Home() {
         }
     }, [isAuthenticated, isPageVisible, wallets.length, activeTab]);
 
-    const loadRazorpay = () => {
-        return new Promise((resolve) => {
-            if ((window as any).Razorpay) return resolve(true);
-            const script = document.createElement("script");
-            script.src = "https://checkout.razorpay.com/v1/checkout.js";
-            script.async = true;
-            script.onload = () => resolve(true);
-            document.body.appendChild(script);
-        });
-    };
+    useEffect(() => {
+        const urlParams = new URLSearchParams(window.location.search);
+        const payment = urlParams.get('payment');
+        if (payment === 'success') {
+            alert("Payment Successful! One additional slot has been added to your account.");
+            fetchConfig();
+            window.history.replaceState({}, document.title, window.location.pathname);
+        } else if (payment === 'cancel') {
+            alert("Payment Cancelled.");
+            window.history.replaceState({}, document.title, window.location.pathname);
+        }
+    }, [isAuthenticated]);
+
+    // const loadRazorpay = () => { ... }; // Removed in favor of Stripe
+    const stripePromise = loadStripe(process.env.NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY || "");
 
     const getAuthHeaders = () => ({
         "Authorization": `Bearer ${localStorage.getItem("scalar_token") || "mock-token"}`,
@@ -214,7 +220,8 @@ export default function Home() {
                         balance: Number.isFinite(b) ? b : 100,
                         initial_balance: Number.isFinite(i) ? i : 100,
                         subscriptionStatus: data.subscription_status || "free",
-                        subscriptionId: data.subscription_id
+                        subscriptionId: data.subscription_id,
+                        extraSlots: data.extra_slots || 0
                     } as any);
 
                     // Only initialize the input field if it's currently empty or at the default "100.0"
@@ -315,31 +322,23 @@ export default function Home() {
 
     const handleExtraSlotPurchase = async () => {
         try {
-            await loadRazorpay();
-            const res = await fetch(`${API_BASE}/razorpay/create-order`, fetchOptions("POST"));
+            const res = await fetch(`${API_BASE}/stripe/create-checkout-session`, fetchOptions("POST"));
             if (res.ok) {
-                const order = await res.json();
-                const options = {
-                    key: (awsConfig as any).RAZORPAY_KEY_ID || "rzp_test_mock",
-                    amount: order.amount,
-                    currency: order.currency,
-                    name: "Pclonecopy",
-                    description: "Additional Profile Tracking Slot",
-                    order_id: order.id,
-                    handler: function (response: any) {
-                        alert("Payment Successful! One additional slot has been added to your account.");
-                        fetchConfig();
-                    },
-                    prefill: {
-                        name: user?.username || "",
-                        email: user?.email || ""
-                    },
-                    theme: { color: "#0075ff" }
-                };
-                const rzp = new (window as any).Razorpay(options);
-                rzp.open();
+                const { url } = await res.json();
+                if (url) {
+                    window.location.href = url; // Redirect to Stripe Checkout
+                } else {
+                    alert("Failed to initiate Stripe Checkout.");
+                }
+            } else {
+                const err = await res.json();
+                console.error("Order creation failed:", err);
+                alert(`Failed to create payment order: ${err.detail || "Unknown error"}`);
             }
-        } catch (error) { console.error("Payment initiation failed:", error); }
+        } catch (error) {
+            console.error("Payment initiation failed:", error);
+            alert("Could not initialize payment. Please check console for details.");
+        }
     };
 
     const terminateWallet = async (address: string) => {
@@ -1248,7 +1247,7 @@ export default function Home() {
                         <div className="bg-white/5 border border-white/10 p-8 rounded-xl backdrop-blur-md">
                             <div className="flex items-center gap-4 text-white/40 italic">
                                 <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><circle cx="12" cy="12" r="10" /><path d="M12 16v-4M12 8h.01" /></svg>
-                                <p className="text-[11px] font-bold tracking-wide uppercase">All transactions are processed through Razorpay Secure Protocol. Expansion slots are permanent and linked to your Terminal Identity.</p>
+                                <p className="text-[11px] font-bold tracking-wide uppercase">All transactions are processed through Stripe Secure Protocol. Expansion slots are permanent and linked to your Terminal Identity.</p>
                             </div>
                         </div>
                     </div>

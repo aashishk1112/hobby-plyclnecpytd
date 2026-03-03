@@ -15,7 +15,7 @@ import time
 from db import get_user_data, update_user_data, add_wallet as db_add_wallet, terminate_wallet, clear_user_trades, update_user_balance
 
 from tracker import PolymarketTracker
-import razorpay
+import stripe
 
 load_dotenv()
 logging.basicConfig(level=logging.INFO)
@@ -29,10 +29,11 @@ category_filters = []
 # In a real multi-user system, these would be per-user
 tracker = PolymarketTracker("local-test-user", [], trade_history, {"balance": 100.0, "initial_balance": 100.0}, category_filters)
 
-# Razorpay client initialization
-RAZORPAY_KEY_ID = os.getenv("RAZORPAY_KEY_ID", "rzp_test_mock")
-RAZORPAY_KEY_SECRET = os.getenv("RAZORPAY_KEY_SECRET", "mock_secret")
-razor_client = razorpay.Client(auth=(RAZORPAY_KEY_ID, RAZORPAY_KEY_SECRET))
+# Stripe client initialization
+STRIPE_SECRET_KEY = os.getenv("STRIPE_SECRET_KEY", "sk_test_mock")
+STRIPE_WEBHOOK_SECRET = os.getenv("STRIPE_WEBHOOK_SECRET", "whsec_mock")
+stripe.api_key = STRIPE_SECRET_KEY
+FRONTEND_URL = os.getenv("FRONTEND_URL", "https://d3ukbv7x6b8vr.cloudfront.net")
 # Load AWS Config (optional for local/LocalStack, highly recommended for production)
 AWS_CONFIG_PATH = os.path.join(os.path.dirname(__file__), ".aws_config.json")
 aws_config = {}
@@ -49,7 +50,9 @@ LOCALSTACK_ENDPOINT = os.getenv("LOCALSTACK_ENDPOINT")
 
 if USER_POOL_ID and not USER_POOL_ID.endswith("_dummy"):
     # Real Cognito User Pool - use official discovery URL
-    JWKS_URL = f"https://cognito-idp.{REGION}.amazonaws.com/{USER_POOL_ID}/.well-known/jwks.json"
+    # Extract region from USER_POOL_ID if possible (e.g. us-east-1_abc)
+    pool_region = USER_POOL_ID.split("_")[0] if "_" in USER_POOL_ID else REGION
+    JWKS_URL = f"https://cognito-idp.{pool_region}.amazonaws.com/{USER_POOL_ID}/.well-known/jwks.json"
 elif LOCALSTACK_ENDPOINT and USER_POOL_ID:
     # Use LocalStack for Cognito discovery
     JWKS_URL = f"{LOCALSTACK_ENDPOINT}/{USER_POOL_ID}/.well-known/jwks.json"
@@ -78,7 +81,7 @@ async def lifespan(app: FastAPI):
     yield
 
 app = FastAPI(title="Pclonecopy API")
-handler = Mangum(app)
+# handler = Mangum(app) # Moved to bottom
 
 async def get_current_user(request):
     """Extraction logic for user context from JWT."""
@@ -130,9 +133,46 @@ async def get_current_user(request):
             raise HTTPException(status_code=401, detail="Invalid token")
 
 @app.middleware("http")
-async def auth_middleware(request, call_next):
+async def manual_cors_middleware(request: Request, call_next):
+    print(f"DEBUG_CORS: {request.method} {request.url.path}")
+    origin = request.headers.get("Origin")
+    allowed_origins = [
+        "https://d3ukbv7x6b8vr.cloudfront.net",
+        "http://localhost:3000",
+        "http://localhost:3001",
+        "http://127.0.0.1:3000",
+        "http://127.0.0.1:3001"
+    ]
+    allowed_origin = origin if origin in allowed_origins else "https://d3ukbv7x6b8vr.cloudfront.net"
+    
+    if request.method == "OPTIONS":
+        from fastapi.responses import Response
+        response = Response()
+        response.headers["Access-Control-Allow-Origin"] = allowed_origin
+        response.headers["Access-Control-Allow-Methods"] = "GET, POST, OPTIONS, PUT, DELETE"
+        response.headers["Access-Control-Allow-Headers"] = "Authorization, Content-Type, Origin, Accept"
+        response.headers["Access-Control-Allow-Credentials"] = "true"
+        response.headers["Access-Control-Max-Age"] = "600"
+        return response
+    
+    response = await call_next(request)
+    response.headers["Access-Control-Allow-Origin"] = allowed_origin
+    response.headers["Access-Control-Allow-Credentials"] = "true"
+    return response
+
+@app.middleware("http")
+async def auth_middleware(request: Request, call_next):
+    # Debug logging for CORS and requests
+    origin = request.headers.get("Origin")
+    referer = request.headers.get("Referer")
+    print(f"DEBUG: Incoming request {request.method} {request.url.path}")
+    print(f"DEBUG: Origin: {origin}")
+    print(f"DEBUG: Referer: {referer}")
+    logger.info(f"Incoming request: {request.method} {request.url.path} from Origin: {origin}")
+
     # Exclude preflight and public routes from auth
-    if request.method == "OPTIONS" or request.url.path in ["/", "/docs", "/openapi.json", "/health"]:
+    # Exclude preflight and public routes from auth
+    if request.method == "OPTIONS" or request.url.path in ["/", "/docs", "/openapi.json", "/health", "/healthz", "/stripe/webhook"]:
         return await call_next(request)
     
     try:
@@ -149,26 +189,7 @@ async def auth_middleware(request, call_next):
         
     return await call_next(request)
 
-# Add CORS Middleware last to ensure it wraps around everything (including auth error responses)
-# However, to be extra safe with custom error responses in middlewares, 
-# we'll ensure the headers are allowed.
-app.add_middleware(
-    CORSMiddleware,
-    allow_origins=[
-        "http://localhost:3000", 
-        "http://localhost:3001", 
-        "http://127.0.0.1:3000", 
-        "http://127.0.0.1:3001", 
-        "http://scalar-planck-web-1772426438.s3-website.ap-south-1.amazonaws.com",
-        "https://d3ukbv7x6b8vr.cloudfront.net",
-        os.getenv("FRONTEND_URL", "https://d3ukbv7x6b8vr.cloudfront.net")
-    ],
-    allow_credentials=True,
-    allow_methods=["*"],
-    allow_headers=["*"],
-    expose_headers=["*"],
-    max_age=600,
-)
+# CORS Middleware removed in favor of manual_cors_middleware above
 
 # In-memory storage for trades (fetched by UI)
 # trade_history = [] # Moved above tracker initialization
@@ -176,6 +197,11 @@ app.add_middleware(
 @app.get("/")
 async def root():
     return {"status": "online", "message": "Polymarket Copy Trade Bot Backend (Simplified)"}
+
+@app.get("/health")
+@app.get("/healthz")
+async def health():
+    return {"status": "ok", "timestamp": time.time()}
 
 @app.get("/config")
 async def get_config(request: Request):
@@ -204,7 +230,7 @@ async def get_config(request: Request):
         "tracked_wallets": tracker.tracked_addresses,
         "disabled_wallets": list(tracker.disabled_addresses),
         "terminated_wallets": data.get("terminatedWallets", []),
-        "paper_trading": os.getenv("PAPER_TRADING", "True") == "True",
+        "paper_trading": os.getenv("PAPER_TRADING", "True").lower() == "true",
         "stats": {
             "balance": float(tracker.stats.get("balance", default_initial)),
             "initial_balance": float(tracker.stats.get("initial_balance", default_initial)),
@@ -212,7 +238,8 @@ async def get_config(request: Request):
         "filters": data.get("filters", []),
         "balance_history": tracker.balance_history,
         "subscription_status": data.get("subscriptionStatus", "free"),
-        "subscription_id": data.get("subscriptionId")
+        "subscription_id": data.get("subscriptionId"),
+        "extra_slots": data.get("extraSlots", 0)
     }
 
 @app.post("/config/update")
@@ -365,56 +392,83 @@ async def add_wallet(request: Request, address: str):
     
     return {"message": "Failed to add wallet", "wallets": tracker.tracked_addresses}
 
-@app.post("/razorpay/create-order")
-async def create_razorpay_order(request: Request):
-    """Create a $5 order for an additional address slot."""
+@app.post("/stripe/create-checkout-session")
+async def create_stripe_checkout(request: Request):
+    """Create a $5 Stripe Checkout session for an additional address slot."""
     user_id = request.state.user_id
     try:
-        amount = 500 # $5.00 in cents (or INR equivalent if configured, but using 500 for $5 logic)
-        order_data = {
-            "amount": amount * 100, # Razorpay expects sub-units
-            "currency": "USD",
-            "receipt": f"receipt_{user_id}_{int(os.times()[4])}",
-            "notes": {
+        session = stripe.checkout.Session.create(
+            payment_method_types=['card'],
+            line_items=[{
+                'price_data': {
+                    'currency': 'usd',
+                    'product_data': {
+                        'name': 'Add 1 Address Slot',
+                        'description': 'Expand your terminal by one additional address slot',
+                    },
+                    'unit_amount': 500, # $5.00
+                },
+                'quantity': 1,
+            }],
+            mode='payment',
+            client_reference_id=user_id,
+            success_url=f"{FRONTEND_URL}/?payment=success",
+            cancel_url=f"{FRONTEND_URL}/?payment=cancel",
+            metadata={
                 "user_id": user_id,
                 "type": "extra_slot"
             }
-        }
-        order = razor_client.order.create(data=order_data)
-        return order
+        )
+        return {"id": session.id, "url": session.url}
     except Exception as e:
-        logger.error(f"Error creating Razorpay order: {e}")
-        raise HTTPException(status_code=500, detail="Failed to create payment order")
+        logger.error(f"Error creating Stripe checkout session: {e}")
+        raise HTTPException(status_code=500, detail="Failed to create payment session")
 
-@app.post("/razorpay/webhook")
-async def razorpay_webhook(request: Request):
-    """Verify Razorpay payment and update user slots."""
+@app.post("/stripe/webhook")
+async def stripe_webhook(request: Request):
+    """Verify Stripe payment and update user slots."""
     payload = await request.body()
-    signature = request.headers.get("X-Razorpay-Signature")
+    sig_header = request.headers.get("Stripe-Signature")
+    
+    if not sig_header:
+        logger.warning("Missing Stripe-Signature header")
+        raise HTTPException(status_code=400, detail="Missing signature")
     
     try:
-        # Verify webhook signature in a real scenario
-        # razor_client.utility.verify_webhook_signature(payload, signature, WEBHOOK_SECRET)
-        
-        data = json.loads(payload)
-        event = data.get("event")
-        
-        if event == "order.paid":
-            order_id = data["payload"]["order"]["entity"]["id"]
-            notes = data["payload"]["order"]["entity"].get("notes", {})
-            user_id = notes.get("user_id")
-            
-            if user_id:
-                user_data = get_user_data(user_id)
-                if user_data:
-                    user_data["extraSlots"] = user_data.get("extraSlots", 0) + 1
-                    update_user_data(user_id, user_data)
-                    logger.info(f"User {user_id} purchased an extra slot. Total extra: {user_data['extraSlots']}")
-        
-        return {"status": "success"}
+        if STRIPE_WEBHOOK_SECRET == "whsec_mock":
+            logger.warning("Using MOCK Stripe Webhook Secret (whsec_mock). Skipping signature verification for testing!")
+            event = await request.json()
+        else:
+            event = stripe.Webhook.construct_event(
+                payload, sig_header, STRIPE_WEBHOOK_SECRET
+            )
+    except ValueError as e:
+        logger.error(f"Invalid Stripe payload: {e}")
+        raise HTTPException(status_code=400, detail="Invalid payload")
+    except stripe.error.SignatureVerificationError as e:
+        logger.error(f"Stripe signature verification failed: {e}")
+        raise HTTPException(status_code=400, detail="Invalid signature")
     except Exception as e:
-        logger.error(f"Razorpay webhook error: {e}")
-        return {"status": "error", "message": str(e)}
+        logger.error(f"Error processing Stripe webhook: {e}")
+        raise HTTPException(status_code=400, detail="Webhook processing error")
+
+    # Handle the event
+    if event['type'] == 'checkout.session.completed':
+        session = event['data']['object']
+        user_id = session.get('client_reference_id')
+        
+        if user_id:
+            user_data = get_user_data(user_id)
+            if user_data:
+                user_data["extraSlots"] = user_data.get("extraSlots", 0) + 1
+                update_user_data(user_id, user_data)
+                logger.info(f"User {user_id} purchased an extra slot via Stripe session {session['id']}. Total extra: {user_data['extraSlots']}")
+            else:
+                logger.error(f"User data not found for user_id: {user_id} during Stripe payment processing")
+        else:
+            logger.error(f"user_id missing in Stripe session metadata for session: {session['id']}")
+            
+    return {"status": "success"}
 
 @app.post("/wallets/terminate")
 async def terminate_wallet_endpoint(request: Request, address: str):
@@ -462,3 +516,6 @@ async def get_trades(request: Request):
 
 if __name__ == "__main__":
     uvicorn.run(app, host="0.0.0.0", port=8001)
+
+# Mangum handler for AWS Lambda (placed at bottom to ensure all routes are registered)
+handler = Mangum(app)
