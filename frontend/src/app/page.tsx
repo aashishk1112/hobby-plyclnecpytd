@@ -425,8 +425,8 @@ export default function Home() {
         if (isNaN(amount) && isNaN(threshold)) return;
 
         const isOnlyThreshold = !isNaN(threshold) && isNaN(amount);
-        const msg = isOnlyThreshold 
-            ? `Update execution threshold to $${threshold}?` 
+        const msg = isOnlyThreshold
+            ? `Update execution threshold to $${threshold}?`
             : `This will RESET all current trade history and set the initial capital to $${amount}. Proceed?`;
 
         const confirmed = window.confirm(msg);
@@ -1284,29 +1284,6 @@ export default function Home() {
 
                         <div className="bg-black border border-white/10 p-10 rounded-xl shadow-2xl space-y-12">
                             <div className="space-y-4">
-                                <label className="block text-[11px] font-black uppercase text-white/40 tracking-widest">Paper Trading Initialization</label>
-                                <div className="flex gap-4">
-                                    <div className="relative flex-1">
-                                        <span className="absolute left-6 top-1/2 -translate-y-1/2 text-white/40 font-bold">$</span>
-                                        <input
-                                            type="text"
-                                            value={initialBalanceInput}
-                                            onChange={(e) => setInitialBalanceInput(e.target.value)}
-                                            className="w-full bg-white/5 border border-white/10 rounded-xl pl-12 pr-6 py-5 text-[16px] font-black outline-none focus:border-white focus:bg-white/10 transition-all text-white placeholder:text-white/10"
-                                            placeholder="100.00"
-                                        />
-                                    </div>
-                                    <button
-                                        onClick={updateInitialBalance}
-                                        className="px-8 bg-white text-black rounded-xl font-black text-[11px] uppercase tracking-widest transition-all hover:bg-white/90 active:scale-95 whitespace-nowrap"
-                                    >
-                                        Apply Capital
-                                    </button>
-                                </div>
-                                <p className="text-[10px] text-white/20 font-bold italic uppercase tracking-wider">Initial simulation balance used for performance delta calculations.</p>
-                            </div>
-
-                            <div className="space-y-4 pt-8 border-t border-white/5">
                                 <label className="block text-[11px] font-black uppercase text-white/40 tracking-widest">Execution Threshold (Min Balance)</label>
                                 <div className="flex gap-4">
                                     <div className="relative flex-1">
@@ -1327,6 +1304,29 @@ export default function Home() {
                                     </button>
                                 </div>
                                 <p className="text-[10px] text-white/20 font-bold italic uppercase tracking-wider">Engine will skip all trade replication if balance falls below this amount.</p>
+                            </div>
+
+                            <div className="space-y-4 pt-8 border-t border-white/5">
+                                <label className="block text-[11px] font-black uppercase text-white/40 tracking-widest">Paper Trading Initialization</label>
+                                <div className="flex gap-4">
+                                    <div className="relative flex-1">
+                                        <span className="absolute left-6 top-1/2 -translate-y-1/2 text-white/40 font-bold">$</span>
+                                        <input
+                                            type="text"
+                                            value={initialBalanceInput}
+                                            onChange={(e) => setInitialBalanceInput(e.target.value)}
+                                            className="w-full bg-white/5 border border-white/10 rounded-xl pl-12 pr-6 py-5 text-[16px] font-black outline-none focus:border-white focus:bg-white/10 transition-all text-white placeholder:text-white/10"
+                                            placeholder="100.00"
+                                        />
+                                    </div>
+                                    <button
+                                        onClick={updateInitialBalance}
+                                        className="px-8 bg-white text-black rounded-xl font-black text-[11px] uppercase tracking-widest transition-all hover:bg-white/90 active:scale-95 whitespace-nowrap"
+                                    >
+                                        Apply Capital
+                                    </button>
+                                </div>
+                                <p className="text-[10px] text-white/20 font-bold italic uppercase tracking-wider">Initial simulation balance used for performance delta calculations.</p>
                             </div>
 
                             <div className="pt-8 border-t border-white/5">
