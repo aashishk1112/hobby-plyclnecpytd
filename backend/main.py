@@ -140,46 +140,11 @@ async def get_current_user(request):
                 return {"sub": f"user-{token}", "name": f"Mock User {token}", "picture": None}
             raise HTTPException(status_code=401, detail="Invalid token")
 
-@app.middleware("http")
-async def manual_cors_middleware(request: Request, call_next):
-    print(f"DEBUG_CORS: {request.method} {request.url.path}")
-    origin = request.headers.get("Origin")
-    allowed_origins = [
-        "https://d3ukbv7x6b8vr.cloudfront.net",
-        "http://localhost:3000",
-        "http://localhost:3001",
-        "http://127.0.0.1:3000",
-        "http://127.0.0.1:3001"
-    ]
-    allowed_origin = origin if origin in allowed_origins else "https://d3ukbv7x6b8vr.cloudfront.net"
-    
-    if request.method == "OPTIONS":
-        from fastapi.responses import Response
-        response = Response()
-        response.headers["Access-Control-Allow-Origin"] = allowed_origin
-        response.headers["Access-Control-Allow-Methods"] = "GET, POST, OPTIONS, PUT, DELETE"
-        response.headers["Access-Control-Allow-Headers"] = "Authorization, Content-Type, Origin, Accept"
-        response.headers["Access-Control-Allow-Credentials"] = "true"
-        response.headers["Access-Control-Max-Age"] = "600"
-        return response
-    
-    response = await call_next(request)
-    response.headers["Access-Control-Allow-Origin"] = allowed_origin
-    response.headers["Access-Control-Allow-Credentials"] = "true"
-    return response
+# CORS handling moved to standard CORSMiddleware below
 
 @app.middleware("http")
 async def auth_middleware(request: Request, call_next):
-    # Debug logging for CORS and requests
-    origin = request.headers.get("Origin")
-    referer = request.headers.get("Referer")
-    print(f"DEBUG: Incoming request {request.method} {request.url.path}")
-    print(f"DEBUG: Origin: {origin}")
-    print(f"DEBUG: Referer: {referer}")
-    logger.info(f"Incoming request: {request.method} {request.url.path} from Origin: {origin}")
-
-    # Exclude preflight and public routes from auth
-    # Exclude preflight and public routes from auth
+    # Exclude public routes and heartbeat from auth
     if request.method == "OPTIONS" or request.url.path in ["/", "/docs", "/openapi.json", "/health", "/healthz", "/stripe/webhook"]:
         return await call_next(request)
     
@@ -194,8 +159,6 @@ async def auth_middleware(request: Request, call_next):
             request.state.user_name = None
             request.state.user_picture = None
     except HTTPException as e:
-        # If we return a response here, it MUST go through CORSMiddleware
-        # So CORSMiddleware must be added AFTER this middleware is defined.
         from fastapi.responses import JSONResponse
         return JSONResponse(status_code=e.status_code, content={"detail": e.detail})
     except Exception as e:
@@ -203,6 +166,21 @@ async def auth_middleware(request: Request, call_next):
         return JSONResponse(status_code=500, content={"detail": f"Internal server error: {str(e)}"})
         
     return await call_next(request)
+
+# Standard CORS Middleware - Added LAST to ensure it wraps all other middlewares/responses
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=[
+        "https://d3ukbv7x6b8vr.cloudfront.net",
+        "http://localhost:3000",
+        "http://localhost:3001",
+        "http://127.0.0.1:3000",
+        "http://127.0.0.1:3001"
+    ],
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
 
 # CORS Middleware removed in favor of manual_cors_middleware above
 
