@@ -45,6 +45,9 @@ def get_user_data(user_id: str):
             "initialBalance": 100.0,
             "balance": 100.0,
             "balanceThreshold": 0.0,
+            "dailyPnlThreshold": 1000.0, # Default P&L threshold for leaderboard
+            "tradingMode": "paper", # paper or live
+            "livePolymarketAddress": None,
             "name": None,
             "picture": None,
             "subscriptionStatus": "free", # free, pro, cancelled

@@ -249,17 +249,40 @@ async def get_config(request: Request):
     }
 
 @app.post("/config/update")
-async def update_config(request: Request, initial_balance: Optional[float] = None, balance_threshold: Optional[float] = None):
+async def update_config(
+    request: Request, 
+    initial_balance: Optional[float] = None, 
+    balance_threshold: Optional[float] = None,
+    daily_pnl_threshold: Optional[float] = None,
+    trading_mode: Optional[str] = None,
+    polymarket_address: Optional[str] = None
+):
     user_id = request.state.user_id
     data = get_user_data(user_id)
     if data is None:
         data = {"userId": user_id, "trackedWallets": [], "disabledWallets": [], "initialBalance": 100.0, "balanceThreshold": 0.0, "filters": []}
 
+    updated = False
     if balance_threshold is not None:
         data["balanceThreshold"] = float(balance_threshold)
         tracker.balance_threshold = float(balance_threshold)
-        update_user_data(user_id, data)
+        updated = True
         logger.info(f"Updated balance threshold for {user_id} to: {balance_threshold}")
+
+    if daily_pnl_threshold is not None:
+        data["dailyPnlThreshold"] = float(daily_pnl_threshold)
+        updated = True
+        logger.info(f"Updated daily P&L threshold for {user_id} to: {daily_pnl_threshold}")
+
+    if trading_mode is not None:
+        data["tradingMode"] = trading_mode # 'paper' or 'live'
+        updated = True
+        logger.info(f"Updated trading mode for {user_id} to: {trading_mode}")
+
+    if polymarket_address is not None:
+        data["livePolymarketAddress"] = polymarket_address
+        updated = True
+        logger.info(f"Updated live polymarket address for {user_id} to: {polymarket_address}")
 
     if initial_balance is not None:
         initial_balance = float(initial_balance)
@@ -273,17 +296,47 @@ async def update_config(request: Request, initial_balance: Optional[float] = Non
         trade_history.clear()
         clear_user_trades(user_id) # Hard delete from DynamoDB
         await tracker.clear_cache()
-
-        update_user_data(user_id, data)
+        updated = True
         logger.info(f"Re-initialized capital for {user_id} to: {initial_balance}. History cleared from memory and DB.")
+
+    if updated:
+        update_user_data(user_id, data)
 
     # Return explicit numbers so frontend always gets correct types
     return {
         "stats": {
             "balance": float(tracker.stats.get("balance", 100.0)),
             "initial_balance": float(tracker.stats.get("initial_balance", 100.0)),
-        }
+        },
+        "config": data
     }
+
+@app.get("/leaderboard")
+async def get_leaderboard(request: Request):
+    """Fetch top traders from Polymarket based on user's daily P&L threshold."""
+    user_id = request.state.user_id
+    user_data = get_user_data(user_id)
+    threshold = user_data.get("dailyPnlThreshold", 1000.0)
+    
+    try:
+        async with httpx.AsyncClient() as client:
+            # Polymarket Data API for daily PnL
+            url = "https://data-api.polymarket.com/v1/leaderboard?timePeriod=DAY&orderBy=PNL&limit=50"
+            response = await client.get(url, timeout=10.0)
+            if response.status_code == 200:
+                all_traders = response.json()
+                # Filter by user's daily P&L threshold and limit to top 10
+                filtered = [
+                    t for t in all_traders 
+                    if float(t.get('pnl', 0)) >= threshold
+                ][:10]
+                return filtered
+            else:
+                logger.error(f"Failed to fetch Polymarket leaderboard: {response.status_code}")
+                return []
+    except Exception as e:
+        logger.error(f"Error fetching leaderboard: {e}")
+        return []
 
 @app.post("/wallets/toggle")
 async def toggle_wallet(request: Request, address: str):

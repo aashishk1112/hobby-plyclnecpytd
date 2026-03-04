@@ -65,6 +65,7 @@ export default function Home() {
     const [newFilter, setNewFilter] = useState("");
     const [availableCategories, setAvailableCategories] = useState<string[]>([]);
     const [selectedWallet, setSelectedWallet] = useState<string | null>(null);
+    const [leaderboard, setLeaderboard] = useState<any[]>([]);
     const [activeTab, setActiveTab] = useState<"IDENTITY" | "OVERVIEW" | "FLEET" | "REPLICATION" | "STRATEGY" | "SETTINGS" | "SUBSCRIPTION">("IDENTITY");
 
     // Feature State
@@ -73,6 +74,9 @@ export default function Home() {
     const [initialBalanceInput, setInitialBalanceInput] = useState("100.0");
     const [profiles, setProfiles] = useState<Record<string, any>>({});
     const [balanceThreshold, setBalanceThreshold] = useState("0.0");
+    const [dailyPnlThreshold, setDailyPnlThreshold] = useState("1000.0");
+    const [tradingMode, setTradingMode] = useState<"paper" | "live">("paper");
+    const [livePolymarketAddress, setLivePolymarketAddress] = useState("");
     const [userProfile, setUserProfile] = useState<{ name?: string | null; picture?: string | null; email?: string | null }>({ name: null, picture: null, email: null });
 
     // Auth State
@@ -150,11 +154,14 @@ export default function Home() {
         if (isAuthenticated && isPageVisible) {
             fetchConfig();
             fetchAvailableCategories();
+            fetchLeaderboard();
 
             const configInterval = setInterval(fetchConfig, 10000);
+            const leaderboardInterval = setInterval(fetchLeaderboard, 30000); // Less frequent leaderboard updates
 
             return () => {
                 clearInterval(configInterval);
+                clearInterval(leaderboardInterval);
                 unsubscribe();
             };
         }
@@ -233,6 +240,15 @@ export default function Home() {
                     if (data.balance_threshold !== undefined) {
                         setBalanceThreshold(data.balance_threshold.toString());
                     }
+                    if (data.daily_pnl_threshold !== undefined) {
+                        setDailyPnlThreshold(data.daily_pnl_threshold.toString());
+                    }
+                    if (data.trading_mode !== undefined) {
+                        setTradingMode(data.trading_mode);
+                    }
+                    if (data.live_polymarket_address !== undefined) {
+                        setLivePolymarketAddress(data.live_polymarket_address || "");
+                    }
                     if (data.user_profile) {
                         setUserProfile(data.user_profile);
                     }
@@ -283,6 +299,16 @@ export default function Home() {
                 setActiveTab("IDENTITY");
             }
         } catch (error) { console.error("Failed to fetch trades:", error); }
+    };
+
+    const fetchLeaderboard = async () => {
+        try {
+            const res = await fetch(`${API_BASE}/leaderboard`, fetchOptions());
+            if (res.ok) {
+                const data = await res.json();
+                setLeaderboard(data);
+            }
+        } catch (error) { console.error("Failed to fetch leaderboard:", error); }
     };
 
     const fetchAvailableCategories = async () => {
@@ -418,41 +444,33 @@ export default function Home() {
         } catch (error) { console.error("Failed to toggle wallet tracking:", error); }
     };
 
-    const updateInitialBalance = async () => {
-        const amount = parseFloat(initialBalanceInput);
-        const threshold = parseFloat(balanceThreshold);
-        if (isNaN(amount) && isNaN(threshold)) return;
-
-        const isOnlyThreshold = !isNaN(threshold) && isNaN(amount);
-        const msg = isOnlyThreshold
-            ? `Update execution threshold to $${threshold}?`
-            : `This will RESET all current trade history and set the initial capital to $${amount}. Proceed?`;
-
-        const confirmed = window.confirm(msg);
-        if (!confirmed) return;
-
+    const updateConfigSettings = async (params: { initial_balance?: number, balance_threshold?: number, daily_pnl_threshold?: number, trading_mode?: string, polymarket_address?: string }) => {
         try {
             let url = `${API_BASE}/config/update?`;
-            if (!isNaN(amount)) url += `initial_balance=${amount}&`;
-            if (!isNaN(threshold)) url += `balance_threshold=${threshold}`;
+            if (params.initial_balance !== undefined) url += `initial_balance=${params.initial_balance}&`;
+            if (params.balance_threshold !== undefined) url += `balance_threshold=${params.balance_threshold}&`;
+            if (params.daily_pnl_threshold !== undefined) url += `daily_pnl_threshold=${params.daily_pnl_threshold}&`;
+            if (params.trading_mode !== undefined) url += `trading_mode=${params.trading_mode}&`;
+            if (params.polymarket_address !== undefined) url += `polymarket_address=${params.polymarket_address}`;
 
             const res = await fetch(url, fetchOptions("POST"));
             if (res.ok) {
                 const data = await res.json();
-                const newStats = data.stats || {};
-                if (!isNaN(amount)) {
+                if (params.initial_balance !== undefined) {
+                    const newStats = data.stats || {};
                     const balance = Number(newStats.balance);
                     const initial_balance = Number(newStats.initial_balance);
                     setStats({
-                        balance: Number.isFinite(balance) ? balance : amount,
-                        initial_balance: Number.isFinite(initial_balance) ? initial_balance : amount,
-                    });
-                    setBalanceHistory([{ timestamp: Date.now() / 1000, balance: Number.isFinite(balance) ? balance : amount }]);
+                        balance: Number.isFinite(balance) ? balance : params.initial_balance,
+                        initial_balance: Number.isFinite(initial_balance) ? initial_balance : params.initial_balance,
+                    } as any);
+                    setBalanceHistory([{ timestamp: Date.now() / 1000, balance: Number.isFinite(balance) ? balance : params.initial_balance }]);
                     setTrades([]);
                     lastCapitalResetAt.current = Date.now();
                 }
                 fetchTrades();
                 fetchConfig();
+                if (params.daily_pnl_threshold !== undefined) fetchLeaderboard();
                 console.log("Configuration updated");
             } else if (res.status === 401) {
                 setIsAuthenticated(false);
@@ -462,6 +480,32 @@ export default function Home() {
                 setActiveTab("IDENTITY");
             }
         } catch (error) { console.error("Failed to update config:", error); }
+    };
+
+    const handleUpdateInitialBalance = async () => {
+        const amount = parseFloat(initialBalanceInput);
+        if (isNaN(amount)) return;
+        if (window.confirm(`This will RESET all current trade history and set the initial capital to $${amount}. Proceed?`)) {
+            updateConfigSettings({ initial_balance: amount });
+        }
+    };
+
+    const handleUpdateBalanceThreshold = () => {
+        const val = parseFloat(balanceThreshold);
+        if (!isNaN(val)) updateConfigSettings({ balance_threshold: val });
+    };
+
+    const handleUpdateDailyPnlThreshold = () => {
+        const val = parseFloat(dailyPnlThreshold);
+        if (!isNaN(val)) updateConfigSettings({ daily_pnl_threshold: val });
+    };
+
+    const handleUpdateTradingMode = (mode: "paper" | "live") => {
+        updateConfigSettings({ trading_mode: mode });
+    };
+
+    const handleUpdatePolymarketAddress = () => {
+        updateConfigSettings({ polymarket_address: livePolymarketAddress });
     };
 
     const filteredTrades = useMemo(() => {
@@ -868,25 +912,35 @@ export default function Home() {
                                 </div>
                             </div>
 
-                            {/* System Logs */}
-                            <div className="lg:col-span-4 bg-[#1a1f37]/50 border border-white/10 p-8 rounded-3xl shadow-xl">
-                                <h3 className="text-[16px] font-black text-white uppercase tracking-wider mb-8">Internal Log</h3>
-                                <div className="space-y-6">
-                                    {trades.slice(0, 6).map((trade, i) => (
-                                        <div key={trade.id} className="flex gap-4 group">
-                                            <div className={`w-1.5 h-6 rounded-full flex-shrink-0 ${trade.side === 'BUY' ? 'bg-[#0075ff]' : 'bg-rose-500'}`} />
-                                            <div className="flex-1">
-                                                <p className="text-[13px] font-bold text-white leading-none mb-1">{trade.market}</p>
-                                                <div className="flex justify-between items-center">
-                                                    <p className="text-[10px] font-bold text-white/20 tracking-tighter truncate max-w-[120px]">{trade.timestamp}</p>
-                                                    <p className={`text-[12px] font-black ${trade.side === 'BUY' ? 'text-[#01b574]' : 'text-rose-400'}`}>${(trade.amount * trade.price).toFixed(2)}</p>
+                            {/* Market Intel (Leaderboard) */}
+                            <div className="lg:col-span-4 bg-[#1a1f37]/50 border border-white/10 p-8 rounded-3xl shadow-xl flex flex-col">
+                                <h3 className="text-[16px] font-black text-white uppercase tracking-wider mb-8">Market Intel</h3>
+                                <div className="space-y-4 flex-1 overflow-y-auto custom-scrollbar max-h-[400px]">
+                                    {leaderboard.map((trader, i) => (
+                                        <div key={trader.proxyWallet || i} className="flex items-center justify-between p-3 bg-white/[0.02] border border-white/5 rounded-xl hover:bg-white/[0.04] transition-all group">
+                                            <div className="flex items-center gap-3">
+                                                <span className="text-[10px] font-black text-white/20 w-4">{trader.rank}</span>
+                                                <div>
+                                                    <p className="text-[12px] font-bold text-white leading-none mb-1">{trader.userName || "Anonymous"}</p>
+                                                    <p className="text-[8px] text-white/30 font-mono">{trader.proxyWallet?.slice(0, 8)}...</p>
                                                 </div>
+                                            </div>
+                                            <div className="text-right">
+                                                <p className="text-[12px] font-black text-[#01b574] leading-none mb-1">+${parseFloat(trader.pnl).toLocaleString()}</p>
+                                                <p className="text-[8px] font-black text-white/20 uppercase tracking-widest">Daily PNL</p>
                                             </div>
                                         </div>
                                     ))}
-                                    {trades.length === 0 && (
-                                        <div className="py-20 text-center text-white/10 font-black uppercase italic tracking-widest">Idle</div>
+                                    {leaderboard.length === 0 && (
+                                        <div className="py-20 text-center text-white/10 font-black uppercase italic tracking-widest flex flex-col items-center gap-3">
+                                            <Icons.Matrix />
+                                            <span>No Alpha Detected</span>
+                                        </div>
                                     )}
+                                </div>
+                                <div className="mt-6 pt-4 border-t border-white/5 flex items-center justify-between">
+                                    <span className="text-[9px] font-black text-white/20 uppercase tracking-widest">Filter: {dailyPnlThreshold}+</span>
+                                    <button onClick={() => setActiveTab("SETTINGS")} className="text-[9px] font-black text-[#0075ff] uppercase tracking-widest hover:underline">Adjust</button>
                                 </div>
                             </div>
                         </div>
@@ -1272,62 +1326,124 @@ export default function Home() {
                         </div>
 
                         <div className="bg-black border border-white/10 p-10 rounded-xl shadow-2xl space-y-12">
-                            <div className="space-y-4">
-                                <label className="block text-[11px] font-black uppercase text-white/40 tracking-widest">Execution Threshold (Min Balance)</label>
-                                <div className="flex gap-4">
-                                    <div className="relative flex-1">
-                                        <span className="absolute left-6 top-1/2 -translate-y-1/2 text-white/40 font-bold">$</span>
-                                        <input
-                                            type="text"
-                                            value={balanceThreshold}
-                                            onChange={(e) => setBalanceThreshold(e.target.value)}
-                                            className="w-full bg-white/5 border border-white/10 rounded-xl pl-12 pr-6 py-5 text-[16px] font-black outline-none focus:border-white focus:bg-white/10 transition-all text-white placeholder:text-white/10"
-                                            placeholder="0.00"
-                                        />
+                            {/* Section 1: Execution Algorithm */}
+                            <div className="space-y-8">
+                                <h3 className="text-[14px] font-black uppercase text-white/60 tracking-[0.2em] border-b border-white/5 pb-2">Execution Algorithm</h3>
+                                <div className="space-y-4">
+                                    <label className="block text-[11px] font-black uppercase text-white/40 tracking-widest">Execution Threshold (Min Balance)</label>
+                                    <div className="flex gap-4">
+                                        <div className="relative flex-1">
+                                            <span className="absolute left-6 top-1/2 -translate-y-1/2 text-white/40 font-bold">$</span>
+                                            <input
+                                                type="text"
+                                                value={balanceThreshold}
+                                                onChange={(e) => setBalanceThreshold(e.target.value)}
+                                                className="w-full bg-white/5 border border-white/10 rounded-xl pl-12 pr-6 py-5 text-[16px] font-black outline-none focus:border-white focus:bg-white/10 transition-all text-white placeholder:text-white/10"
+                                                placeholder="0.00"
+                                            />
+                                        </div>
+                                        <button
+                                            onClick={handleUpdateBalanceThreshold}
+                                            className="px-8 bg-white text-black rounded-xl font-black text-[11px] uppercase tracking-widest transition-all hover:bg-white/90 active:scale-95 whitespace-nowrap"
+                                        >
+                                            Set Threshold
+                                        </button>
                                     </div>
-                                    <button
-                                        onClick={updateInitialBalance}
-                                        className="px-8 bg-white text-black rounded-xl font-black text-[11px] uppercase tracking-widest transition-all hover:bg-white/90 active:scale-95 whitespace-nowrap"
-                                    >
-                                        Set Threshold
-                                    </button>
+                                    <p className="text-[10px] text-white/20 font-bold italic uppercase tracking-wider">Engine will skip all trade replication if balance falls below this amount.</p>
                                 </div>
-                                <p className="text-[10px] text-white/20 font-bold italic uppercase tracking-wider">Engine will skip all trade replication if balance falls below this amount.</p>
+
+                                <div className="space-y-4">
+                                    <label className="block text-[11px] font-black uppercase text-white/40 tracking-widest">Paper Trading Initialization</label>
+                                    <div className="flex gap-4">
+                                        <div className="relative flex-1">
+                                            <span className="absolute left-6 top-1/2 -translate-y-1/2 text-white/40 font-bold">$</span>
+                                            <input
+                                                type="text"
+                                                value={initialBalanceInput}
+                                                onChange={(e) => setInitialBalanceInput(e.target.value)}
+                                                className="w-full bg-white/5 border border-white/10 rounded-xl pl-12 pr-6 py-5 text-[16px] font-black outline-none focus:border-white focus:bg-white/10 transition-all text-white placeholder:text-white/10"
+                                                placeholder="100.00"
+                                            />
+                                        </div>
+                                        <button
+                                            onClick={handleUpdateInitialBalance}
+                                            className="px-8 bg-white text-black rounded-xl font-black text-[11px] uppercase tracking-widest transition-all hover:bg-white/90 active:scale-95 whitespace-nowrap"
+                                        >
+                                            Apply Capital
+                                        </button>
+                                    </div>
+                                    <p className="text-[10px] text-white/20 font-bold italic uppercase tracking-wider">Initial simulation balance used for performance delta calculations.</p>
+                                </div>
                             </div>
 
-                            <div className="space-y-4 pt-8 border-t border-white/5">
-                                <label className="block text-[11px] font-black uppercase text-white/40 tracking-widest">Paper Trading Initialization</label>
-                                <div className="flex gap-4">
-                                    <div className="relative flex-1">
-                                        <span className="absolute left-6 top-1/2 -translate-y-1/2 text-white/40 font-bold">$</span>
-                                        <input
-                                            type="text"
-                                            value={initialBalanceInput}
-                                            onChange={(e) => setInitialBalanceInput(e.target.value)}
-                                            className="w-full bg-white/5 border border-white/10 rounded-xl pl-12 pr-6 py-5 text-[16px] font-black outline-none focus:border-white focus:bg-white/10 transition-all text-white placeholder:text-white/10"
-                                            placeholder="100.00"
-                                        />
+                            {/* Section 2: Market Intelligence */}
+                            <div className="space-y-8 pt-8 border-t border-white/5">
+                                <h3 className="text-[14px] font-black uppercase text-white/60 tracking-[0.2em] border-b border-white/5 pb-2">Market Intelligence</h3>
+                                <div className="space-y-4">
+                                    <label className="block text-[11px] font-black uppercase text-white/40 tracking-widest">Alpha P&L Threshold (Daily)</label>
+                                    <div className="flex gap-4">
+                                        <div className="relative flex-1">
+                                            <span className="absolute left-6 top-1/2 -translate-y-1/2 text-white/40 font-bold">$</span>
+                                            <input
+                                                type="text"
+                                                value={dailyPnlThreshold}
+                                                onChange={(e) => setDailyPnlThreshold(e.target.value)}
+                                                className="w-full bg-white/5 border border-white/10 rounded-xl pl-12 pr-6 py-5 text-[16px] font-black outline-none focus:border-white focus:bg-white/10 transition-all text-white placeholder:text-white/10"
+                                                placeholder="1000.00"
+                                            />
+                                        </div>
+                                        <button
+                                            onClick={handleUpdateDailyPnlThreshold}
+                                            className="px-8 bg-white text-black rounded-xl font-black text-[11px] uppercase tracking-widest transition-all hover:bg-white/90 active:scale-95 whitespace-nowrap"
+                                        >
+                                            Set Alpha Filter
+                                        </button>
                                     </div>
-                                    <button
-                                        onClick={updateInitialBalance}
-                                        className="px-8 bg-white text-black rounded-xl font-black text-[11px] uppercase tracking-widest transition-all hover:bg-white/90 active:scale-95 whitespace-nowrap"
-                                    >
-                                        Apply Capital
-                                    </button>
+                                    <p className="text-[10px] text-white/20 font-bold italic uppercase tracking-wider">Only traders with a daily P&L above this amount will appear in your dashboard Intel.</p>
                                 </div>
-                                <p className="text-[10px] text-white/20 font-bold italic uppercase tracking-wider">Initial simulation balance used for performance delta calculations.</p>
                             </div>
 
-                            <div className="pt-8 border-t border-white/5">
-                                <div className="flex items-center justify-between mb-6">
-                                    <div>
-                                        <h4 className="text-[14px] font-black uppercase text-white">Simulation Engine</h4>
-                                        <p className="text-[11px] text-white/30 font-bold mt-1 uppercase tracking-widest italic">Current mode: Paper Trading</p>
-                                    </div>
-                                    <div className="w-12 h-6 bg-white/10 rounded-full relative p-1 cursor-not-allowed">
-                                        <div className="w-4 h-4 bg-white/20 rounded-full" />
-                                    </div>
+                            {/* Section 3: Trading Configuration */}
+                            <div className="space-y-8 pt-8 border-t border-white/5">
+                                <h3 className="text-[14px] font-black uppercase text-white/60 tracking-[0.2em] border-b border-white/5 pb-2">Trading Configuration</h3>
+                                <div className="grid grid-cols-2 gap-4">
+                                    <button
+                                        onClick={() => handleUpdateTradingMode("paper")}
+                                        className={`flex flex-col items-center justify-center p-6 rounded-2xl border transition-all ${tradingMode === "paper" ? "bg-[#0075ff]/10 border-[#0075ff] shadow-[0_0_20px_rgba(0,117,255,0.2)]" : "bg-white/5 border-white/10 hover:border-white/20"}`}
+                                    >
+                                        <span className="text-2xl mb-2">📄</span>
+                                        <span className="text-[11px] font-black uppercase tracking-widest text-white">Paper Trading</span>
+                                        <span className="text-[9px] text-white/40 font-bold mt-1 uppercase italic">Simulated Execution</span>
+                                    </button>
+                                    <button
+                                        onClick={() => handleUpdateTradingMode("live")}
+                                        className={`flex flex-col items-center justify-center p-6 rounded-2xl border transition-all ${tradingMode === "live" ? "bg-[#01b574]/10 border-[#01b574] shadow-[0_0_20px_rgba(1,181,116,0.2)]" : "bg-white/5 border-white/10 hover:border-white/20"}`}
+                                    >
+                                        <span className="text-2xl mb-2">⚡</span>
+                                        <span className="text-[11px] font-black uppercase tracking-widest text-white">Live Trading</span>
+                                        <span className="text-[9px] text-white/40 font-bold mt-1 uppercase italic">Institutional Rails</span>
+                                    </button>
                                 </div>
+                                {tradingMode === "live" && (
+                                    <div className="space-y-4 animate-in slide-in-from-top-6">
+                                        <label className="block text-[11px] font-black uppercase text-white/40 tracking-widest">Connect Polymarket Address</label>
+                                        <div className="flex gap-4">
+                                            <input
+                                                type="text"
+                                                value={livePolymarketAddress}
+                                                onChange={(e) => setLivePolymarketAddress(e.target.value)}
+                                                className="flex-1 bg-white/5 border border-white/10 rounded-xl px-6 py-4 text-[13px] font-bold outline-none focus:border-white transition-all text-white font-mono"
+                                                placeholder="0x..."
+                                            />
+                                            <button
+                                                onClick={handleUpdatePolymarketAddress}
+                                                className="px-6 bg-[#01b574] text-white rounded-xl font-black text-[10px] uppercase tracking-widest transition-all hover:bg-[#01b574]/80"
+                                            >
+                                                Connect
+                                            </button>
+                                        </div>
+                                    </div>
+                                )}
                             </div>
                         </div>
                     </div>
