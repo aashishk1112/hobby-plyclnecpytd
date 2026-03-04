@@ -18,21 +18,16 @@ def handle_floats(obj):
     return obj
 
 # Load local config if exists (for LocalStack IDs)
-AWS_CONFIG_PATH = os.path.join(os.path.dirname(__file__), ".aws_config.json")
-AWS_CONFIG = {}
-if os.path.exists(AWS_CONFIG_PATH):
-    with open(AWS_CONFIG_PATH, "r") as f:
-        AWS_CONFIG = json.load(f)
-
-# Environment variables (provided by Lambda or local setup)
-TABLE_NAME = os.getenv("DYNAMODB_TABLE", AWS_CONFIG.get("DYNAMODB_TABLE", "ScalarUsers"))
-TRADES_TABLE_NAME = os.getenv("TRADES_TABLE", AWS_CONFIG.get("TRADES_TABLE", "ScalarTrades"))
-IS_LOCAL = os.getenv("IS_LOCAL", "false").lower() == "true"
+# Constants
+AWS_REGION = get_config("AWS_REGION", "ap-south-1")
+TABLE_NAME = get_config("DYNAMODB_TABLE", "ScalarUsers")
+TRADES_TABLE_NAME = get_config("TRADES_TABLE", "ScalarTrades")
+IS_LOCAL = get_config("IS_LOCAL", "false").lower() == "true"
 
 def get_dynamodb_resource():
     if IS_LOCAL:
         return boto3.resource("dynamodb", endpoint_url="http://localhost:4566", region_name="us-east-1")
-    return boto3.resource("dynamodb")
+    return boto3.resource("dynamodb", region_name=AWS_REGION)
 
 db = get_dynamodb_resource()
 table = db.Table(TABLE_NAME)
@@ -160,6 +155,28 @@ def save_trade(user_id: str, trade_data: dict):
         return True
     except ClientError as e:
         logger.error(f"Error saving trade for {user_id}: {e.response['Error']['Message']}")
+        return False
+
+def is_trade_processed(user_id: str, tx_hash: str):
+    """Check if a trade ID already exists in ScalarTrades."""
+    try:
+        # We need to query by userId and check if any sortKey contains the tx_hash
+        # Since sortKey is timestamp#txHash, we've stored tx_hash as 'id' in the item as well
+        response = trades_table.query(
+            KeyConditionExpression="userId = :uid",
+            FilterExpression="#tx_id = :tx",
+            ExpressionAttributeNames={
+                "#tx_id": "id"
+            },
+            ExpressionAttributeValues={
+                ":uid": user_id,
+                ":tx": tx_hash
+            },
+            Limit=1
+        )
+        return len(response.get("Items", [])) > 0
+    except ClientError as e:
+        logger.error(f"Error checking trade existence: {e.response['Error']['Message']}")
         return False
 
 def get_user_trades(user_id: str, limit: int = 50):

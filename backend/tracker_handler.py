@@ -31,7 +31,7 @@ def run(event, context):
             user_id=user_id,
             tracked_addresses=data.get("trackedWallets", []),
             trade_history=[], # History is in DB, tracker only needs it for in-memory display (not used in Lambda poll)
-            stats={"balance": data.get("initialBalance", 100.0), "initial_balance": data.get("initialBalance", 100.0)},
+            stats={"balance": data.get("balance", 100.0), "initial_balance": data.get("initialBalance", 100.0)},
             category_filters=data.get("filters", [])
         )
         

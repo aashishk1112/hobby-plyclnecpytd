@@ -33,29 +33,22 @@ def test_flow():
     print(f"Add {addr_dup}: {resp.status_code} - {resp.json()}")
     assert resp.status_code == 400
 
-    # 5. Simulate Payment via Razorpay Webhook
-    print("\nSimulating successful payment via Razorpay Webhook...")
-    webhook_payload = {
-        "event": "order.paid",
-        "payload": {
-            "order": {
-                "entity": {
-                    "id": "order_test_123",
-                    "notes": {
-                        "user_id": "local-test-user"
-                    }
-                }
+    # 5. Simulate Payment via Stripe Webhook
+    print("\nSimulating successful payment via Stripe Webhook...")
+    stripe_webhook_payload = {
+        "type": "checkout.session.completed",
+        "data": {
+            "object": {
+                "id": "session_test_123",
+                "client_reference_id": "local-test-user",
+                "payment_status": "paid"
             }
         }
     }
-    # Webhook endpoint doesn't require auth header in main.py logic (it's excluded by request.url.path check? No, wait.)
-    # Let's check if /razorpay/webhook is in the excluded paths.
-    # Lines 129: if request.method == "OPTIONS" or request.url.path in ["/", "/docs", "/openapi.json", "/health"]:
-    # It is NOT excluded. So I need to send the signature or just hope it doesn't fail on signature validation 
-    # since I commented out razor_client.utility.verify_webhook_signature.
-    
-    resp = httpx.post(f"{API_BASE}/razorpay/webhook", json=webhook_payload)
-    print(f"Webhook simulation: {resp.status_code} - {resp.json()}")
+    # Using the Stripe webhook endpoint
+    headers_stripe = {"Stripe-Signature": "mock_signature"}
+    resp = httpx.post(f"{API_BASE}/stripe/webhook", json=stripe_webhook_payload, headers=headers_stripe)
+    print(f"Stripe Webhook simulation: {resp.status_code} - {resp.json()}")
     assert resp.status_code == 200
 
     # 6. Add third wallet again (Success)

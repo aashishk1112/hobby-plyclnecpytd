@@ -17,36 +17,24 @@ from db import get_user_data, update_user_data, add_wallet as db_add_wallet, ter
 from tracker import PolymarketTracker
 import stripe
 
-load_dotenv()
-logging.basicConfig(level=logging.INFO)
-logger = logging.getLogger(__name__)
+from config_loader import get_config
 
 # In-memory storage for trades
 trade_history = []
 category_filters = []
 
 # Global# Trackers - initialized on startup
-# In a real multi-user system, these would be per-user
 tracker = PolymarketTracker("local-test-user", [], trade_history, {"balance": 100.0, "initial_balance": 100.0}, category_filters)
 
 # Stripe client initialization
-STRIPE_SECRET_KEY = os.getenv("STRIPE_SECRET_KEY", "sk_test_mock")
-STRIPE_WEBHOOK_SECRET = os.getenv("STRIPE_WEBHOOK_SECRET", "whsec_mock")
+STRIPE_SECRET_KEY = get_config("STRIPE_SECRET_KEY", "sk_test_mock")
+STRIPE_WEBHOOK_SECRET = get_config("STRIPE_WEBHOOK_SECRET", "whsec_mock")
 stripe.api_key = STRIPE_SECRET_KEY
-FRONTEND_URL = os.getenv("FRONTEND_URL", "https://d3ukbv7x6b8vr.cloudfront.net")
-# Load AWS Config (optional for local/LocalStack, highly recommended for production)
-AWS_CONFIG_PATH = os.path.join(os.path.dirname(__file__), ".aws_config.json")
-aws_config = {}
-if os.path.exists(AWS_CONFIG_PATH):
-    try:
-        with open(AWS_CONFIG_PATH, "r") as f:
-            aws_config = json.load(f)
-    except Exception as e:
-        print(f"Warning: Failed to load config from {AWS_CONFIG_PATH}: {e}")
+FRONTEND_URL = get_config("FRONTEND_URL", "https://d3ukbv7x6b8vr.cloudfront.net")
 
-REGION = os.getenv("AWS_REGION", aws_config.get("REGION", "ap-south-1"))
-USER_POOL_ID = os.getenv("USER_POOL_ID", aws_config.get("USER_POOL_ID"))
-LOCALSTACK_ENDPOINT = os.getenv("LOCALSTACK_ENDPOINT")
+REGION = get_config("AWS_REGION", "ap-south-1")
+USER_POOL_ID = get_config("USER_POOL_ID")
+LOCALSTACK_ENDPOINT = get_config("LOCALSTACK_ENDPOINT")
 
 if USER_POOL_ID and not USER_POOL_ID.endswith("_dummy"):
     # Real Cognito User Pool - use official discovery URL
@@ -88,7 +76,7 @@ async def get_current_user(request):
     auth_header = request.headers.get("Authorization")
     
     # Check if mock auth is enabled (default to False for production)
-    is_mock = os.getenv("MOCK_AUTH", "False").lower() == "true"
+    is_mock = get_config("MOCK_AUTH", "False").lower() == "true"
     
     if not auth_header or not auth_header.startswith("Bearer "):
         if is_mock:
@@ -118,7 +106,8 @@ async def get_current_user(request):
             return {
                 "sub": payload.get("sub"),
                 "name": payload.get("name"),
-                "picture": payload.get("picture")
+                "picture": payload.get("picture"),
+                "email": payload.get("email")
             }
         except Exception as e:
             logger.error(f"JWT Verification failed: {e}")
@@ -129,15 +118,16 @@ async def get_current_user(request):
             payload = jwt.get_unverified_claims(token)
             user_id = payload.get("sub") or payload.get("username")
             if not user_id and is_mock:
-                return {"sub": f"user-{token}", "name": f"Mock User {token}", "picture": None}
+                return {"sub": f"user-{token}", "name": f"Mock User {token}", "picture": None, "email": "mock@example.com"}
             return {
                 "sub": user_id,
                 "name": payload.get("name"),
-                "picture": payload.get("picture")
+                "picture": payload.get("picture"),
+                "email": payload.get("email")
             }
         except Exception:
             if is_mock:
-                return {"sub": f"user-{token}", "name": f"Mock User {token}", "picture": None}
+                return {"sub": f"user-{token}", "name": f"Mock User {token}", "picture": None, "email": "mock@example.com"}
             raise HTTPException(status_code=401, detail="Invalid token")
 
 # CORS handling moved to standard CORSMiddleware below
@@ -154,10 +144,12 @@ async def auth_middleware(request: Request, call_next):
             request.state.user_id = user_info["sub"]
             request.state.user_name = user_info.get("name")
             request.state.user_picture = user_info.get("picture")
+            request.state.user_email = user_info.get("email")
         else:
             request.state.user_id = user_info
             request.state.user_name = None
             request.state.user_picture = None
+            request.state.user_email = None
     except HTTPException as e:
         from fastapi.responses import JSONResponse
         return JSONResponse(status_code=e.status_code, content={"detail": e.detail})
@@ -211,6 +203,9 @@ async def get_config(request: Request):
     if request.state.user_picture and data.get("picture") != request.state.user_picture:
         data["picture"] = request.state.user_picture
         updated = True
+    if request.state.user_email and data.get("email") != request.state.user_email:
+        data["email"] = request.state.user_email
+        updated = True
     if updated:
         update_user_data(user_id, data)
 
@@ -235,7 +230,7 @@ async def get_config(request: Request):
         "tracked_wallets": tracker.tracked_addresses,
         "disabled_wallets": list(tracker.disabled_addresses),
         "terminated_wallets": data.get("terminatedWallets", []),
-        "paper_trading": os.getenv("PAPER_TRADING", "True").lower() == "true",
+        "paper_trading": get_config("PAPER_TRADING", "True").lower() == "true",
         "stats": {
             "balance": float(tracker.stats.get("balance", default_initial)),
             "initial_balance": float(tracker.stats.get("initial_balance", default_initial)),
@@ -248,7 +243,8 @@ async def get_config(request: Request):
         "balance_threshold": float(data.get("balanceThreshold", 0.0)),
         "user_profile": {
             "name": data.get("name"),
-            "picture": data.get("picture")
+            "picture": data.get("picture"),
+            "email": data.get("email")
         }
     }
 

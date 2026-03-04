@@ -73,7 +73,7 @@ export default function Home() {
     const [initialBalanceInput, setInitialBalanceInput] = useState("100.0");
     const [profiles, setProfiles] = useState<Record<string, any>>({});
     const [balanceThreshold, setBalanceThreshold] = useState("0.0");
-    const [userProfile, setUserProfile] = useState<{ name?: string | null; picture?: string | null }>({ name: null, picture: null });
+    const [userProfile, setUserProfile] = useState<{ name?: string | null; picture?: string | null; email?: string | null }>({ name: null, picture: null, email: null });
 
     // Auth State
     const [isAuthenticated, setIsAuthenticated] = useState(false);
@@ -191,7 +191,6 @@ export default function Home() {
         }
     }, [isAuthenticated]);
 
-    // const loadRazorpay = () => { ... }; // Removed in favor of Stripe
     const stripePromise = loadStripe(process.env.NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY || "");
 
     const getAuthHeaders = () => ({
@@ -683,17 +682,7 @@ export default function Home() {
                                                 <span className="px-3 py-1 bg-[#01b574]/10 border border-[#01b574]/20 rounded-full text-[9px] font-black text-[#01b574] uppercase tracking-widest">Authorized</span>
                                             </div>
                                         </div>
-                                        <div className="grid grid-cols-2 gap-4">
-                                            <div className="bg-white/5 p-4 rounded-xl border border-white/5">
-                                                <p className="text-[9px] font-black text-white/20 uppercase tracking-widest mb-1">Session Protocol</p>
-                                                <p className="text-[12px] font-black text-white">HTTPS/JWT v3</p>
-                                            </div>
-                                            <div className="bg-white/5 p-4 rounded-xl border border-white/5">
-                                                <p className="text-[9px] font-black text-white/20 uppercase tracking-widest mb-1">Data Sharding</p>
-                                                <p className="text-[12px] font-black text-white text-[#0075ff]">US-EAST-1</p>
-                                            </div>
-                                        </div>
-                                        <div className="flex flex-col gap-3 pt-2">
+                                        <div className="flex flex-col gap-3 pt-6">
                                             <button
                                                 onClick={handleLogout}
                                                 className="w-full py-4 bg-rose-500/10 border border-rose-500/20 rounded-xl text-rose-500 font-black text-[10px] tracking-widest uppercase hover:bg-rose-500 hover:text-white transition-all shadow-lg shadow-rose-500/10"

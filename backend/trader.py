@@ -12,18 +12,17 @@ except ImportError:
     class OrderArgs:
         def __init__(self, *args, **kwargs): pass
     POLYGON = "polygon"
-import os
-import logging
+from config_loader import get_config
 
 logger = logging.getLogger(__name__)
 
 class TradeExecutor:
     def __init__(self):
-        self.api_key = os.getenv("POLY_API_KEY")
-        self.api_secret = os.getenv("POLY_API_SECRET")
-        self.api_passphrase = os.getenv("POLY_API_PASSPHRASE")
-        self.private_key = os.getenv("POLY_PRIVATE_KEY")
-        pt_env = os.getenv("PAPER_TRADING", "True")
+        self.api_key = get_config("POLY_API_KEY")
+        self.api_secret = get_config("POLY_API_SECRET")
+        self.api_passphrase = get_config("POLY_API_PASSPHRASE")
+        self.private_key = get_config("POLY_PRIVATE_KEY")
+        pt_env = get_config("PAPER_TRADING", "True")
         self.paper_trading = pt_env.lower() == "true"
         
         if not self.paper_trading:

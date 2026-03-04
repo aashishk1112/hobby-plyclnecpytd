@@ -16,6 +16,7 @@ class PolymarketTracker:
         self.disabled_addresses = set() # Addresses to skip during monitoring
         self.trade_history = trade_history
         self.stats = stats if stats is not None else {"balance": 100.0, "initial_balance": 100.0}
+        self.stats["balance"] = float(self.stats.get("balance", 100.0))
         self.balance_threshold = float(stats.get("balance_threshold", 0.0)) if stats else 0.0
         self.category_filters = category_filters if category_filters is not None else []
         self.balance_history = [{"timestamp": time.time(), "balance": self.stats["balance"]}]
@@ -77,6 +78,13 @@ class PolymarketTracker:
                         # If this is a new trade (not seen before)
                         if tx_hash in self.seen_trade_hashes:
                             logger.debug(f"DEBUG: Skipping already seen trade {tx_hash}")
+                            continue
+                        
+                        # Double check database for persistent seen (important for Lambda/restarts)
+                        from db import is_trade_processed
+                        if is_trade_processed(self.user_id, tx_hash):
+                            logger.debug(f"DEBUG: Skipping already processed trade {tx_hash} (found in DB)")
+                            self.seen_trade_hashes.add(tx_hash)
                             continue
 
                         self.seen_trade_hashes.add(tx_hash)
