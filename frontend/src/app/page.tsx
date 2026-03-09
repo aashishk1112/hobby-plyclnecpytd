@@ -53,6 +53,8 @@ const Icons = {
     Settings: () => <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round"><path d="M12.22 2h-.44a2 2 0 00-2 2v.18a2 2 0 01-1 1.73l-.43.25a2 2 0 01-2 0l-.15-.08a2 2 0 00-2.73.73l-.22.38a2 2 0 00.73 2.73l.15.1a2 2 0 011 1.72v.51a2 2 0 01-1 1.74l-.15.09a2 2 0 00-.73 2.73l.22.38a2 2 0 002.73.73l.15-.08a2 2 0 012 0l.43.25a2 2 0 011 1.73V20a2 2 0 002 2h.44a2 2 0 002-2v-.18a2 2 0 011-1.73l.43-.25a2 2 0 012 0l.15.08a2 2 0 002.73-.73l.22-.39a2 2 0 00-.73-2.73l-.15-.08a2 2 0 01-1-1.74v-.5a2 2 0 011-1.74l.15-.09a2 2 0 00.73-2.73l-.22-.38a2 2 0 00-2.73-.73l-.15.08a2 2 0 01-2 0l-.43-.25a2 2 0 01-1-1.73V4a2 2 0 00-2-2z" /><circle cx="12" cy="12" r="3" /></svg>,
     Help: () => <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="12" r="10" /><path d="M9.09 9a3 3 0 015.83 1c0 2-3 3-3 3M12 17h.01" /></svg>,
     Logout: () => <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M9 21H5a2 2 0 01-2-2V5a2 2 0 012-2h4M16 17l5-5-5-5M21 12H9" /></svg>,
+    Verified: () => <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#0075ff" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><path d="M9 11l3 3L22 4" /><path d="M21 12v7a2 2 0 01-2 2H5a2 2 0 01-2-2V5a2 2 0 012-2h11" /></svg>,
+    ExternalLink: () => <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><path d="M18 13v6a2 2 0 01-2 2H5a2 2 0 01-2-2V5a2 2 0 012-2h6" /><polyline points="15 3 21 3 21 9" /><line x1="10" y1="14" x2="21" y2="3" /></svg>,
 };
 
 export default function Home() {
@@ -734,9 +736,8 @@ export default function Home() {
                         { id: "OVERVIEW", label: "Dashboard", icon: <Icons.Dashboard />, protected: true },
                         { id: "FLEET", label: "Node Matrix", icon: <Icons.Fleet />, protected: true },
                         { id: "REPLICATION", label: "Stream", icon: <Icons.Matrix />, protected: true },
-                        /* Phase 2-5 items hidden for Phase 1 release */
                         { id: "STRATEGY", label: "Intel Engine", icon: <Icons.Strategy />, protected: true },
-                        // { id: "SOCIAL", label: "Social Matrix", icon: <Icons.Messages />, protected: true },
+                        { id: "SOCIAL", label: "Leaderboard", icon: <Icons.Messages />, protected: true },
                         // { id: "SUBSCRIPTION", label: "Subscription", icon: <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round"><path d="M12 2v20M17 5H9.5a3.5 3.5 0 000 7h5a3.5 3.5 0 010 7H6" /></svg>, protected: true },
                         { id: "SETTINGS", label: "Settings", icon: <Icons.Settings />, protected: true }
                     ].map((tab) => (
@@ -992,9 +993,7 @@ export default function Home() {
                                 </div>
                             </div>
 
-                            {/* Phase 3+ Intelligence features hidden in Phase 1 release */}
-                            {/* Whale Radar & Heatmap HUD */}
-                            {/*
+                            {/* Phase 3+ Intelligence features enabled */}
                             <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 mb-8">
                                 <div className="bg-white/[0.03] border border-white/10 p-6 rounded-2xl">
                                     <div className="flex items-center justify-between mb-4">
@@ -1044,7 +1043,6 @@ export default function Home() {
                                     </div>
                                 </div>
                             </div>
-                            */}
 
                             {/* Predictive Intelligence Grid */}
                             {/*
@@ -1223,7 +1221,7 @@ export default function Home() {
                                                             className="text-white/20 hover:text-white transition-colors"
                                                             title="View Polymarket Profile"
                                                         >
-                                                            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round"><path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2 2V8a2 2 0 0 1 2-2h6" /><polyline points="15 3 21 3 21 9" /><line x1="10" y1="14" x2="21" y2="3" /></svg>
+                                                            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round"><path d="M18 13v6a2 2 0 0 1-2 2H5a2 0 0 1-2 2V8a2 0 0 1 2-2h6" /><polyline points="15 3 21 3 21 9" /><line x1="10" y1="14" x2="21" y2="3" /></svg>
                                                         </a>
                                                     </div>
                                                     <p className="text-[10px] text-white/40 font-mono truncate mb-1">
@@ -1286,6 +1284,107 @@ export default function Home() {
                                 )}
                             </div>
                         </section>
+                    </div>
+                )}
+
+                {activeTab === "SOCIAL" && (
+                    <div className="animate-in fade-in zoom-in-95 duration-500">
+                        <div className="max-w-7xl mx-auto">
+                            <div className="flex flex-col md:flex-row md:items-center justify-between gap-8 mb-16">
+                                <div>
+                                    <h1 className="text-[42px] font-black uppercase tracking-tighter leading-none mb-3 italic">Institutional Leaderboard</h1>
+                                    <p className="text-white/30 text-[13px] font-bold tracking-[0.4em] uppercase italic flex items-center gap-3">
+                                        Top Performance Nodes
+                                        <span className="flex items-center gap-2 px-3 py-1 rounded bg-[#0075ff]/10 border border-[#0075ff]/20 text-[10px] font-black text-[#0075ff] uppercase tracking-widest">
+                                            <span className="w-2 h-2 rounded-full bg-[#0075ff] animate-pulse" /> Live Grid
+                                        </span>
+                                    </p>
+                                </div>
+                                <div className="flex items-center gap-3 px-4 py-2 bg-[#0075ff]/10 border border-[#0075ff]/20 rounded-full">
+                                    <span className="w-2 h-2 rounded-full bg-[#0075ff] animate-pulse" />
+                                    <span className="text-[10px] font-black text-[#0075ff] uppercase tracking-widest">Tracking 124 Nodes</span>
+                                </div>
+                            </div>
+
+                            <div className="overflow-x-auto">
+                                <table className="w-full border-collapse">
+                                    <thead>
+                                        <tr className="border-b border-white/5 bg-white/[0.01]">
+                                            <th className="px-8 py-5 text-left text-[10px] font-black text-white/30 uppercase tracking-[0.2em] w-20">Rank</th>
+                                            <th className="px-8 py-5 text-left text-[10px] font-black text-white/30 uppercase tracking-[0.2em] w-24">Profile</th>
+                                            <th className="px-8 py-5 text-left text-[10px] font-black text-white/30 uppercase tracking-[0.2em]">Nodal Identity</th>
+                                            <th className="px-8 py-5 text-right text-[10px] font-black text-white/30 uppercase tracking-[0.2em]">Total PNL</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody className="divide-y divide-white/[0.03]">
+                                        {leaderboard.map((trader, i) => (
+                                            <tr
+                                                key={trader.proxyWallet || i}
+                                                onClick={() => window.open(`https://polymarket.com/profile/${trader.proxyWallet}`, '_blank')}
+                                                className="group/row hover:bg-white/[0.04] transition-all cursor-pointer relative"
+                                            >
+                                                <td className="px-8 py-7 text-center">
+                                                    <span className={`text-[20px] font-black italic tracking-tighter ${i < 3 ? 'text-[#0075ff]' : 'text-white/20'}`}>
+                                                        #{trader.rank}
+                                                    </span>
+                                                </td>
+                                                <td className="px-8 py-7">
+                                                    <div className="w-14 h-14 rounded-2xl bg-gradient-to-br from-white/20 to-transparent p-[1px] shadow-xl group-hover/row:scale-105 transition-transform duration-500 relative overflow-hidden">
+                                                        <div className="w-full h-full rounded-2xl bg-[#0b0e1f] flex items-center justify-center overflow-hidden">
+                                                            {trader.profile_image ? (
+                                                                <img
+                                                                    src={trader.profile_image}
+                                                                    className="w-full h-full object-cover group-hover/row:scale-110 transition-transform duration-700"
+                                                                    alt="profile"
+                                                                />
+                                                            ) : (
+                                                                <div
+                                                                    className="w-full h-full"
+                                                                    style={{
+                                                                        background: (() => {
+                                                                            const seed = trader.proxyWallet || trader.userName || "default";
+                                                                            let hash = 0;
+                                                                            for (let j = 0; j < seed.length; j++) {
+                                                                                hash = seed.charCodeAt(j) + ((hash << 5) - hash);
+                                                                            }
+                                                                            const colors = [
+                                                                                `hsl(${Math.abs(hash % 360)}, 70%, 50%)`,
+                                                                                `hsl(${Math.abs((hash * 13) % 360)}, 60%, 40%)`,
+                                                                                `hsl(${Math.abs((hash * 7) % 360)}, 80%, 60%)`
+                                                                            ];
+                                                                            return `radial-gradient(at 66% 77%, ${colors[0]} 0px, transparent 50%), radial-gradient(at 29% 97%, ${colors[1]} 0px, transparent 50%), radial-gradient(at 9% 29%, ${colors[2]} 0px, transparent 50%), #0b0e1f`;
+                                                                        })()
+                                                                    }}
+                                                                />
+                                                            )}
+                                                        </div>
+                                                        <div className="absolute inset-0 bg-gradient-to-t from-[#0b0e1f]/40 to-transparent opacity-0 group-hover/row:opacity-100 transition-opacity" />
+                                                    </div>
+                                                </td>
+                                                <td className="px-8 py-7">
+                                                    <div>
+                                                        <div className="text-[16px] font-bold text-white group-hover/row:text-[#0075ff] transition-colors leading-none mb-1.5 tracking-tight">
+                                                            {trader.userName || "Institutional Node"}
+                                                        </div>
+                                                        <div className="text-[10px] text-white/30 font-mono tracking-wider">
+                                                            {trader.proxyWallet?.slice(0, 10)}...{trader.proxyWallet?.slice(-8)}
+                                                        </div>
+                                                    </div>
+                                                </td>
+                                                <td className="px-8 py-7 text-right">
+                                                    <div className="flex flex-col items-end">
+                                                        <span className="text-[22px] font-black text-[#01b574] tracking-tight mb-0.5">
+                                                            +${parseFloat(trader.pnl || "0").toLocaleString()}
+                                                        </span>
+                                                        <span className="text-[8px] font-black text-[#01b574]/40 uppercase tracking-[0.2em]">Institutional PNL</span>
+                                                    </div>
+                                                </td>
+                                            </tr>
+                                        ))}
+                                    </tbody>
+                                </table>
+                            </div>
+                        </div>
                     </div>
                 )}
 
@@ -1425,7 +1524,8 @@ export default function Home() {
                             <p className="text-white/30 text-[12px] font-bold tracking-[0.3em] uppercase italic">AI Portfolio & Logic Constraints</p>
                         </div>
 
-                        <div className="mb-12 bg-[#0075ff]/5 border border-[#0075ff]/20 rounded-3xl p-10 relative overflow-hidden">
+                        {/* Phase 4 AI Portfolio features hidden in Phase 3 */}
+                        {/* <div className="mb-12 bg-[#0075ff]/5 border border-[#0075ff]/20 rounded-3xl p-10 relative overflow-hidden">
                             <div className="absolute top-0 right-0 p-10 opacity-10">
                                 <Icons.Strategy />
                             </div>
@@ -1465,7 +1565,7 @@ export default function Home() {
                                     </div>
                                 )}
                             </div>
-                        </div>
+                        </div> */}
 
                         <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
                             <section className="bg-black border border-white/10 p-8 rounded-xl shadow-xl space-y-8">
