@@ -12,7 +12,8 @@ except ImportError:
     class OrderArgs:
         def __init__(self, *args, **kwargs): pass
     POLYGON = "polygon"
-from config_loader import get_config
+from backend.core.config import get_config
+import logging
 
 logger = logging.getLogger(__name__)
 

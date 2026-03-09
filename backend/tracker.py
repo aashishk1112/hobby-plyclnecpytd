@@ -122,6 +122,35 @@ class PolymarketTracker:
                                 continue
                             matching_filter = matched_cat
 
+                        # Smart Copy & Risk Check
+                        rules = self.stats.get("smart_copy_rules", {})
+                        risk = self.stats.get("risk_controls", {})
+                        
+                        # 1. Risk Protection: Stop Loss & Daily Loss
+                        # (In a real system, P&L is tracked globally. Here we check the session delta)
+                        session_pnl = self.stats["balance"] - self.stats["initial_balance"]
+                        if risk.get("stop_loss") and session_pnl <= -float(risk["stop_loss"]):
+                            logger.warning(f"RISK: Stop loss hit (${session_pnl}). Halting further trades.")
+                            continue
+                            
+                        # 2. Smart Copy Rules: Size Limits
+                        min_size = float(rules.get("min_trade_size", 0))
+                        max_size = float(rules.get("max_trade_size", 1000000))
+                        
+                        # Multi-Trader Allocation Check
+                        allocations = self.stats.get("allocation_weights", {})
+                        max_alloc = float(allocations.get(address, max_size))
+                        
+                        target_cost = min(total_cost, max_alloc)
+                        
+                        if target_cost < min_size:
+                            logger.info(f"RULE: Skipping trade. Target ${target_cost:.2f} (from wallet {address}) is below min ${min_size}")
+                            continue
+
+                        # Update paper balance with allocation awareness
+                        # actual_execution_cost = target_cost
+                        actual_execution_cost = target_cost
+                        
                         # Don't execute paper trades on initial historical fetch
                         if not initial:
                             logger.info(f"REAL trade detected for {address} in {trade.get('title')}!")
@@ -135,16 +164,16 @@ class PolymarketTracker:
                             
                             formatted_time = time.strftime("%H:%M:%S", time.localtime(timestamp_sec)) if timestamp_sec else time.strftime("%H:%M:%S")
                             
-                            # Check balance threshold
+                            # Check balance threshold (existing)
                             if self.stats["balance"] < self.balance_threshold:
                                 logger.warning(f"THRESHOLD: Skipping trade execution. Balance ${self.stats['balance']:.2f} is below threshold ${self.balance_threshold:.2f}")
                                 continue
 
                             # Update paper balance
                             if side == "BUY":
-                                self.stats["balance"] -= total_cost
+                                self.stats["balance"] -= actual_execution_cost
                             else:
-                                self.stats["balance"] += total_cost
+                                self.stats["balance"] += actual_execution_cost
 
                             trade_data = {
                                 "id": tx_hash,
@@ -152,12 +181,13 @@ class PolymarketTracker:
                                 "wallet": address,
                                 "market": market_title,
                                 "side": side,
-                                "amount": amount,
+                                "amount": amount * (actual_execution_cost / total_cost) if total_cost > 0 else amount,
                                 "price": price,
-                                "total": total_cost,
-                                "total_cost": total_cost,
+                                "total": actual_execution_cost,
+                                "total_cost": actual_execution_cost,
                                 "status": "executed",
-                                "category": matching_filter
+                                "category": matching_filter,
+                                "classification": "Verified"
                             }
                             
                             # Execute paper trade replication

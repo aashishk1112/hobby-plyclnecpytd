@@ -7,7 +7,7 @@ from dotenv import load_dotenv
 # Load .env for local development
 load_dotenv()
 # Also load from the project root if it exists - consolidated source of truth
-root_env = os.path.join(os.path.dirname(__file__), "..", ".env")
+root_env = os.path.join(os.path.dirname(__file__), "..", "..", ".env")
 if os.path.exists(root_env):
     load_dotenv(root_env, override=True)
 
@@ -50,7 +50,6 @@ class ConfigLoader:
         # Attempt to load from Secrets Manager if not in local mode
         if os.getenv("IS_LOCAL", "false").lower() == "false":
             try:
-                # Basic check for AWS credentials or profile to avoid hanging if possible
                 session = boto3.session.Session()
                 client = session.client(
                     service_name='secretsmanager',
@@ -62,32 +61,22 @@ class ConfigLoader:
                 if 'SecretString' in get_secret_value_response:
                     secrets = json.loads(get_secret_value_response['SecretString'])
                     self._config.update(secrets)
-                    print(f"Successfully loaded {len(secrets)} secrets from Secrets Manager: {secret_name}")
                 elif 'SecretBinary' in get_secret_value_response:
-                    # In case the secret is binary
                     import base64
                     decoded_binary_secret = base64.b64decode(get_secret_value_response['SecretBinary'])
                     secrets = json.loads(decoded_binary_secret)
                     self._config.update(secrets)
-                    print(f"Successfully loaded {len(secrets)} binary secrets from Secrets Manager: {secret_name}")
-            except (ClientError, Exception) as e:
-                # If we cannot fetch from Secrets Manager, we still have env vars
-                print(f"Notice: Could not fetch secrets from Secrets Manager ({type(e).__name__}). Using environment/mock fallbacks.")
+            except (ClientError, Exception):
+                pass
 
     def get(self, key, default=None):
-        # 1. Check loaded config (Secrets Manager + Env)
         val = self._config.get(key)
         if val is not None:
             return val
-        
-        # 2. Check provided default in the call
         if default is not None:
             return default
-            
-        # 3. Check hardcoded mock defaults
         return MOCK_DEFAULTS.get(key)
 
-# Singleton instance
 config = ConfigLoader()
 
 def get_config(key, default=None):

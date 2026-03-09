@@ -66,7 +66,12 @@ export default function Home() {
     const [availableCategories, setAvailableCategories] = useState<string[]>([]);
     const [selectedWallet, setSelectedWallet] = useState<string | null>(null);
     const [leaderboard, setLeaderboard] = useState<any[]>([]);
-    const [activeTab, setActiveTab] = useState<"IDENTITY" | "OVERVIEW" | "FLEET" | "REPLICATION" | "STRATEGY" | "SETTINGS" | "SUBSCRIPTION">("IDENTITY");
+    const [whales, setWhales] = useState<any[]>([]);
+    const [signals, setSignals] = useState<any[]>([]);
+    const [heatmap, setHeatmap] = useState<any[]>([]);
+    const [aiPortfolio, setAIPortfolio] = useState<any>(null);
+    const [socialFeed, setSocialFeed] = useState<any[]>([]);
+    const [activeTab, setActiveTab] = useState<"IDENTITY" | "OVERVIEW" | "FLEET" | "REPLICATION" | "STRATEGY" | "SOCIAL" | "SETTINGS" | "SUBSCRIPTION">("IDENTITY");
 
     // Feature State
     const [disabledWallets, setDisabledWallets] = useState<string[]>([]);
@@ -213,7 +218,7 @@ export default function Home() {
 
     const fetchConfig = async () => {
         try {
-            const res = await fetch(`${API_BASE}/config`, fetchOptions());
+            const res = await fetch(`${API_BASE}/trading/config`, fetchOptions());
             if (res.ok) {
                 const data = await res.json();
                 const newWallets = data.tracked_wallets || [];
@@ -252,6 +257,11 @@ export default function Home() {
                     if (data.user_profile) {
                         setUserProfile(data.user_profile);
                     }
+                    (setStats as any)((prev: any) => ({
+                        ...prev,
+                        referralCode: data.referral_code,
+                        referralCount: data.referral_count
+                    }));
                 }
                 if (Array.isArray(data.balance_history) && !skipStatsFromPoll) setBalanceHistory(data.balance_history);
                 if (data.filters) setFilters(data.filters);
@@ -288,7 +298,7 @@ export default function Home() {
 
     const fetchTrades = async () => {
         try {
-            const res = await fetch(`${API_BASE}/trades`, fetchOptions());
+            const res = await fetch(`${API_BASE}/trading/trades`, fetchOptions());
             if (res.ok) {
                 const data = await res.json();
                 setTrades(data);
@@ -303,7 +313,7 @@ export default function Home() {
 
     const fetchLeaderboard = async () => {
         try {
-            const res = await fetch(`${API_BASE}/leaderboard`, fetchOptions());
+            const res = await fetch(`${API_BASE}/social/leaderboard`, fetchOptions());
             if (res.ok) {
                 const data = await res.json();
                 setLeaderboard(data);
@@ -313,7 +323,7 @@ export default function Home() {
 
     const fetchAvailableCategories = async () => {
         try {
-            const res = await fetch(`${API_BASE}/available-categories`, fetchOptions());
+            const res = await fetch(`${API_BASE}/intelligence/available-categories`, fetchOptions());
             if (res.ok) {
                 const data = await res.json();
                 setAvailableCategories(data.categories || []);
@@ -325,6 +335,87 @@ export default function Home() {
             }
         } catch (error) { console.error("Failed to fetch available categories:", error); }
     };
+
+    useEffect(() => {
+        if (!isAuthenticated) return;
+        const fetchWhales = async () => {
+            try {
+                const res = await fetch(`${API_BASE}/intelligence/whales`, { headers: getAuthHeaders() });
+                if (res.status === 401) return handleLogout();
+                if (res.ok) {
+                    const data = await res.json();
+                    if (data && Array.isArray(data)) {
+                        setWhales(prev => [...data, ...prev].slice(0, 10));
+                    }
+                }
+            } catch (err) { console.error("Whale fetch error:", err); }
+        };
+        const fetchSignals = async () => {
+            try {
+                const res = await fetch(`${API_BASE}/intelligence/signals`, { headers: getAuthHeaders() });
+                if (res.ok) {
+                    const data = await res.json();
+                    setSignals(data || []);
+                }
+            } catch (err) { console.error("Signal fetch error:", err); }
+        };
+
+        const fetchHeatmap = async () => {
+            try {
+                const res = await fetch(`${API_BASE}/intelligence/heatmap`, { headers: getAuthHeaders() });
+                if (res.ok) {
+                    const data = await res.json();
+                    setHeatmap(data || []);
+                }
+            } catch (err) { console.error("Heatmap fetch error:", err); }
+        };
+
+        const fetchAIPortfolio = async () => {
+            try {
+                const res = await fetch(`${API_BASE}/ai/portfolio`, { headers: getAuthHeaders() });
+                if (res.ok) {
+                    const data = await res.json();
+                    setAIPortfolio(data);
+                }
+            } catch (err) { console.error("AI Portfolio fetch error:", err); }
+        };
+
+        // Real-time WebSocket logic
+        const wsUrl = `ws://${new URL(API_BASE).host}/ws/${user?.username || 'anon'}`;
+        const ws = new WebSocket(wsUrl);
+
+        ws.onopen = () => console.info("WebSocket Tunnel Active");
+        ws.onmessage = (event) => {
+            try {
+                const msg = JSON.parse(event.data);
+                if (msg.type === "WHALE_RADAR") {
+                    setWhales(prev => [msg.data, ...prev].slice(0, 10));
+                } else if (msg.type === "SOCIAL_FEED_UPDATE") {
+                    // Logic to update social feed if needed
+                } else if (msg.type === "ALPHA_STREAM_UPDATE") {
+                    setSocialFeed(prev => [msg.data, ...prev].slice(0, 15));
+                }
+            } catch (e) { console.error("WS parse error", e); }
+        };
+
+        const whaleInterval = setInterval(fetchWhales, 60000); // Polling reduced to 1m fallback
+        const signalInterval = setInterval(fetchSignals, 60000);
+        const heatmapInterval = setInterval(fetchHeatmap, 300000);
+        const aiInterval = setInterval(fetchAIPortfolio, 300000);
+
+        fetchWhales();
+        fetchSignals();
+        fetchHeatmap();
+        fetchAIPortfolio();
+
+        return () => {
+            clearInterval(whaleInterval);
+            clearInterval(signalInterval);
+            clearInterval(heatmapInterval);
+            clearInterval(aiInterval);
+            ws.close();
+        };
+    }, [isAuthenticated, API_BASE]);
 
     const addWallet = async () => {
         if (!newWallet) return;
@@ -412,6 +503,25 @@ export default function Home() {
                 setActiveTab("IDENTITY");
             }
         } catch (error) { console.error("Failed to add filter:", error); }
+    };
+
+    const updateFilter = async (newFilters: any) => {
+        try {
+            const res = await fetch(`${API_BASE}/trading/config/update`, {
+                method: "POST",
+                headers: getAuthHeaders(),
+                body: JSON.stringify({ filters: newFilters }),
+            });
+            if (res.ok) {
+                const data = await res.json();
+                setFilters(data.filters);
+            } else if (res.status === 401) {
+                setIsAuthenticated(false);
+                setUser(null);
+                localStorage.removeItem("scalar_token");
+                setActiveTab("IDENTITY");
+            }
+        } catch (error) { console.error("Failed to update filter:", error); }
     };
 
     const removeFilter = async (category: string) => {
@@ -556,18 +666,30 @@ export default function Home() {
     };
 
     const handleSocialLogin = async (provider: "Google" | "Twitter") => {
-        const fallbackMockLogin = () => {
+        const fallbackMockLogin = async () => {
             console.warn("Using mock social login");
-            const mockUser = {
-                username: `${provider.toLowerCase()}_user`,
-                email: `${provider.toLowerCase()}@example.com`,
-                picture: `https://api.dicebear.com/7.x/avataaars/svg?seed=${provider}`
-            };
-            setIsAuthenticated(true);
-            setUser(mockUser);
-            localStorage.setItem("scalar_token", `mock-${provider.toLowerCase()}-token`);
-            localStorage.setItem("scalar_user", JSON.stringify(mockUser));
-            setActiveTab("OVERVIEW");
+            try {
+                const res = await fetch(`${API_BASE}/auth/mock/login`, {
+                    method: "POST",
+                    headers: { "Content-Type": "application/json" },
+                    body: JSON.stringify({ username: `${provider.toLowerCase()}_user` })
+                });
+                if (res.ok) {
+                    const data = await res.json();
+                    const mockUser = {
+                        username: data.user_id,
+                        email: `${provider.toLowerCase()}@example.com`,
+                        picture: `https://api.dicebear.com/7.x/avataaars/svg?seed=${provider}`
+                    };
+                    setIsAuthenticated(true);
+                    setUser(mockUser);
+                    localStorage.setItem("scalar_token", data.access_token);
+                    localStorage.setItem("scalar_user", JSON.stringify(mockUser));
+                    setActiveTab("OVERVIEW");
+                }
+            } catch (err) {
+                console.error("Mock login via backend failed:", err);
+            }
         };
 
         // Use mock login if explicitly enabled or if real config is missing
@@ -605,7 +727,8 @@ export default function Home() {
                         { id: "OVERVIEW", label: "Dashboard", icon: <Icons.Dashboard />, protected: true },
                         { id: "FLEET", label: "Node Matrix", icon: <Icons.Fleet />, protected: true },
                         { id: "REPLICATION", label: "Stream", icon: <Icons.Matrix />, protected: true },
-                        { id: "STRATEGY", label: "Engine Logic", icon: <Icons.Strategy />, protected: true },
+                        { id: "STRATEGY", label: "Intel Engine", icon: <Icons.Strategy />, protected: true },
+                        { id: "SOCIAL", label: "Social Matrix", icon: <Icons.Messages />, protected: true },
                         { id: "SUBSCRIPTION", label: "Subscription", icon: <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round"><path d="M12 2v20M17 5H9.5a3.5 3.5 0 000 7h5a3.5 3.5 0 010 7H6" /></svg>, protected: true },
                         { id: "SETTINGS", label: "Settings", icon: <Icons.Settings />, protected: true }
                     ].map((tab) => (
@@ -860,12 +983,128 @@ export default function Home() {
                                     </div>
                                 </div>
                             </div>
+
+                            {/* Whale Radar & Heatmap HUD */}
+                            <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 mb-8">
+                                <div className="bg-white/[0.03] border border-white/10 p-6 rounded-2xl">
+                                    <div className="flex items-center justify-between mb-4">
+                                        <h3 className="text-[12px] font-black uppercase tracking-widest flex items-center gap-2">
+                                            Whale Radar <span className="w-2 h-2 rounded-full bg-[#0075ff] animate-pulse" />
+                                        </h3>
+                                        <span className="text-[9px] font-black text-white/20 uppercase">Smart Money Flow</span>
+                                    </div>
+                                    <div className="space-y-2">
+                                        {whales.length === 0 ? (
+                                            <div className="py-6 text-center text-white/10 font-black uppercase text-[10px] tracking-widest italic">Scanning Clusters...</div>
+                                        ) : (
+                                            whales.slice(0, 4).map((w) => (
+                                                <div key={w.id} className="p-3 bg-white/[0.02] border border-white/5 rounded-xl flex items-center justify-between group">
+                                                    <span className={`text-[8px] font-black px-1.5 py-0.5 rounded ${w.classification?.includes('Whale') ? 'bg-rose-500/20 text-rose-500' : 'bg-[#0075ff]/20 text-[#0075ff]'} uppercase tracking-widest`}>
+                                                        {w.classification}
+                                                    </span>
+                                                    <p className="text-[10px] font-bold text-white truncate max-w-[120px] opacity-60">{w.market}</p>
+                                                    <span className="text-[10px] font-black text-[#01b574] leading-none">${(w.value / 1000).toFixed(0)}K</span>
+                                                </div>
+                                            ))
+                                        )}
+                                    </div>
+                                </div>
+
+                                <div className="bg-white/[0.03] border border-white/10 p-6 rounded-2xl">
+                                    <div className="flex items-center justify-between mb-4">
+                                        <h3 className="text-[12px] font-black uppercase tracking-widest flex items-center gap-2">
+                                            Retail Heatmap <span className="w-2 h-2 rounded-full bg-[#ff7e00] animate-pulse" />
+                                        </h3>
+                                        <span className="text-[9px] font-black text-white/20 uppercase">Market Crowdedness</span>
+                                    </div>
+                                    <div className="space-y-2">
+                                        {heatmap.length === 0 ? (
+                                            <div className="py-6 text-center text-white/10 font-black uppercase text-[10px] tracking-widest italic">Calculating Proximity...</div>
+                                        ) : (
+                                            heatmap.slice(0, 4).map((h, i) => (
+                                                <div key={i} className="p-3 bg-white/[0.02] border border-white/5 rounded-xl flex items-center justify-between">
+                                                    <p className="text-[10px] font-bold text-white truncate max-w-[120px]">{h.market}</p>
+                                                    <div className="flex-1 mx-4 h-1 bg-white/5 rounded-full overflow-hidden">
+                                                        <div className="h-full bg-gradient-to-r from-[#01b574] to-rose-500" style={{ width: `${h.retail_ratio * 100}%` }} />
+                                                    </div>
+                                                    <span className="text-[10px] font-black text-white/40">{Math.round(h.retail_ratio * 100)}% Retail</span>
+                                                </div>
+                                            ))
+                                        )}
+                                    </div>
+                                </div>
+                            </div>
+
+                            {/* Predictive Intelligence Grid */}
+                            <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+                                <div className="lg:col-span-2 bg-black border border-white/10 p-8 rounded-2xl shadow-xl">
+                                    <h3 className="text-[14px] font-black text-white uppercase tracking-wider mb-1">Predictive Alpha Signals</h3>
+                                    <p className="text-[11px] text-white/30 mb-8 font-bold italic uppercase">Whale behavior forecast models</p>
+
+                                    <div className="space-y-4">
+                                        {signals.length === 0 ? (
+                                            <div className="py-12 text-center text-white/10 font-black uppercase text-[11px] tracking-[0.3em]">No Alpha Detected</div>
+                                        ) : (
+                                            signals.map((sig) => (
+                                                <div key={sig.id} className="p-5 bg-white/[0.02] border border-white/5 rounded-2xl flex items-center justify-between hover:bg-white/5 transition-all">
+                                                    <div className="flex items-center gap-6">
+                                                        <div className="relative w-12 h-12 flex items-center justify-center">
+                                                            <svg viewBox="0 0 100 100" className="w-full absolute rotate-[-90deg]">
+                                                                <circle cx="50" cy="50" r="48" fill="none" stroke="rgba(255,255,255,0.05)" strokeWidth="4" />
+                                                                <circle cx="50" cy="50" r="48" fill="none" stroke="#0075ff" strokeWidth="4" strokeDasharray="301.6" strokeDashoffset={301.6 * (1 - sig.confidence / 100)} />
+                                                            </svg>
+                                                            <span className="text-[10px] font-black text-white">{sig.confidence}%</span>
+                                                        </div>
+                                                        <div>
+                                                            <div className="flex items-center gap-3 mb-1">
+                                                                <span className="px-2 py-0.5 bg-[#0075ff]/10 text-[#0075ff] text-[8px] font-black uppercase tracking-widest rounded">{sig.type}</span>
+                                                                <span className="text-[10px] text-white/20 font-bold uppercase">{new Date(sig.timestamp * 1000).toLocaleTimeString()}</span>
+                                                            </div>
+                                                            <p className="text-[12px] font-black text-white tracking-tight">{sig.market}</p>
+                                                            <p className="text-[10px] text-white/40 italic font-bold mt-1">{sig.reason}</p>
+                                                        </div>
+                                                    </div>
+                                                    <button className="px-4 py-2 bg-white/5 hover:bg-white/10 border border-white/10 rounded-lg text-[9px] font-black uppercase tracking-widest transition-all">Execute Signal</button>
+                                                </div>
+                                            ))
+                                        )}
+                                    </div>
+                                </div>
+
+                                {/* Market Intensity Gauge */}
+                                <div className="bg-black border border-white/10 p-8 rounded-2xl shadow-xl flex flex-col items-center justify-center">
+                                    <h3 className="text-[14px] font-black text-white uppercase tracking-wider self-start mb-1">Cluster Intensity</h3>
+                                    <p className="text-[11px] text-white/30 self-start mb-8 font-bold italic uppercase">Whale density index</p>
+
+                                    <div className="space-y-6 w-full">
+                                        {[
+                                            { label: "Institutional Titan", val: whales.filter(w => w.classification === "Institutional Titan").length, max: 5 },
+                                            { label: "Polymarket Whale", val: whales.filter(w => w.classification === "Market Mover").length, max: 10 },
+                                            { label: "Predictive Signals", val: signals.length, max: 8 }
+                                        ].map((c) => (
+                                            <div key={c.label}>
+                                                <div className="flex justify-between items-center mb-2">
+                                                    <span className="text-[9px] font-black text-white/40 uppercase tracking-widest">{c.label}</span>
+                                                    <span className="text-[11px] font-black text-white">{c.val}</span>
+                                                </div>
+                                                <div className="h-1.5 w-full bg-white/5 rounded-full overflow-hidden">
+                                                    <div className="h-full bg-[#0075ff] transition-all duration-1000" style={{ width: `${(c.val / c.max) * 100}%` }} />
+                                                </div>
+                                            </div>
+                                        ))}
+                                    </div>
+
+                                    <div className="mt-12 p-4 bg-[#01b574]/5 border border-[#01b574]/10 rounded-xl w-full">
+                                        <p className="text-[9px] font-black text-[#01b574] uppercase tracking-widest text-center">Liquidity Status: High</p>
+                                    </div>
+                                </div>
+                            </div>
                         </div>
 
                         {/* Bottom Operational Grid */}
-                        <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
+                        <div className="grid grid-cols-1 gap-6">
                             {/* Fleet Table */}
-                            <div className="lg:col-span-8 bg-[#1a1f37]/50 border border-white/10 p-8 rounded-3xl shadow-xl">
+                            <div className="bg-[#1a1f37]/50 border border-white/10 p-8 rounded-3xl shadow-xl">
                                 <div className="flex items-center justify-between mb-8">
                                     <h3 className="text-[16px] font-black text-white uppercase tracking-wider">Unit Network</h3>
                                     <button onClick={addWallet} className="bg-[#0075ff] hover:bg-[#0075ff]/80 text-white px-5 py-2.5 rounded-xl text-[11px] font-black uppercase tracking-widest flex items-center gap-2 transition-all">
@@ -909,38 +1148,6 @@ export default function Home() {
                                             );
                                         })
                                     )}
-                                </div>
-                            </div>
-
-                            {/* Market Intel (Leaderboard) */}
-                            <div className="lg:col-span-4 bg-[#1a1f37]/50 border border-white/10 p-8 rounded-3xl shadow-xl flex flex-col">
-                                <h3 className="text-[16px] font-black text-white uppercase tracking-wider mb-8">Market Intel</h3>
-                                <div className="space-y-4 flex-1 overflow-y-auto custom-scrollbar max-h-[400px]">
-                                    {leaderboard.map((trader, i) => (
-                                        <div key={trader.proxyWallet || i} className="flex items-center justify-between p-3 bg-white/[0.02] border border-white/5 rounded-xl hover:bg-white/[0.04] transition-all group">
-                                            <div className="flex items-center gap-3">
-                                                <span className="text-[10px] font-black text-white/20 w-4">{trader.rank}</span>
-                                                <div>
-                                                    <p className="text-[12px] font-bold text-white leading-none mb-1">{trader.userName || "Anonymous"}</p>
-                                                    <p className="text-[8px] text-white/30 font-mono">{trader.proxyWallet?.slice(0, 8)}...</p>
-                                                </div>
-                                            </div>
-                                            <div className="text-right">
-                                                <p className="text-[12px] font-black text-[#01b574] leading-none mb-1">+${parseFloat(trader.pnl).toLocaleString()}</p>
-                                                <p className="text-[8px] font-black text-white/20 uppercase tracking-widest">Daily PNL</p>
-                                            </div>
-                                        </div>
-                                    ))}
-                                    {leaderboard.length === 0 && (
-                                        <div className="py-20 text-center text-white/10 font-black uppercase italic tracking-widest flex flex-col items-center gap-3">
-                                            <Icons.Matrix />
-                                            <span>No Alpha Detected</span>
-                                        </div>
-                                    )}
-                                </div>
-                                <div className="mt-6 pt-4 border-t border-white/5 flex items-center justify-between">
-                                    <span className="text-[9px] font-black text-white/20 uppercase tracking-widest">Filter: {dailyPnlThreshold}+</span>
-                                    <button onClick={() => setActiveTab("SETTINGS")} className="text-[9px] font-black text-[#0075ff] uppercase tracking-widest hover:underline">Adjust</button>
                                 </div>
                             </div>
                         </div>
@@ -1013,6 +1220,23 @@ export default function Home() {
                                                     )}
                                                     <div className="flex items-center gap-4">
                                                         <span className="text-[9px] font-black text-white/20 tracking-widest uppercase">Sequence {i + 1}</span>
+                                                        {!isTerminated && !isDisabled && (
+                                                            <>
+                                                                <span className="w-1 h-1 bg-white/10 rounded-full" />
+                                                                <div className="flex items-center gap-3 bg-white/5 px-3 py-1 rounded-lg">
+                                                                    <span className="text-[8px] font-black text-white/40 uppercase tracking-widest">Weight</span>
+                                                                    <input
+                                                                        type="range"
+                                                                        min="1"
+                                                                        max="100"
+                                                                        value={allocationWeights[addr] || "50"}
+                                                                        onChange={(e) => handleUpdateAllocation(addr, e.target.value)}
+                                                                        className="w-16 h-1 bg-white/10 rounded-full appearance-none cursor-pointer accent-[#0075ff]"
+                                                                    />
+                                                                    <span className="text-[10px] font-bold text-[#0075ff] w-6">{allocationWeights[addr] || "50"}%</span>
+                                                                </div>
+                                                            </>
+                                                        )}
                                                         <span className="w-1 h-1 bg-white/10 rounded-full" />
                                                         {isTerminated ? (
                                                             <span className="text-rose-500 text-[9px] font-black uppercase tracking-widest">Permanently Terminated</span>
@@ -1180,10 +1404,53 @@ export default function Home() {
                     </div >
                 )}
                 {activeTab === "STRATEGY" && (
-                    <div className="animate-in fade-in zoom-in-95 duration-500 max-w-4xl mx-auto">
+                    <div className="animate-in fade-in zoom-in-95 duration-500 max-w-6xl mx-auto">
                         <div className="text-center mb-16">
-                            <h1 className="text-[32px] font-black uppercase tracking-tighter mb-2">Engine Logic</h1>
-                            <p className="text-white/30 text-[12px] font-bold tracking-widest uppercase italic">Centralized replication filtering constraints</p>
+                            <h1 className="text-[32px] font-black uppercase tracking-tighter mb-2 italic">Institutional Alpha Dashboard</h1>
+                            <p className="text-white/30 text-[12px] font-bold tracking-[0.3em] uppercase italic">AI Portfolio & Logic Constraints</p>
+                        </div>
+
+                        {/* AI Portfolio Builder Section */}
+                        <div className="mb-12 bg-[#0075ff]/5 border border-[#0075ff]/20 rounded-3xl p-10 relative overflow-hidden">
+                            <div className="absolute top-0 right-0 p-10 opacity-10">
+                                <Icons.Strategy />
+                            </div>
+                            <div className="relative z-10">
+                                <div className="flex items-center justify-between mb-8">
+                                    <div>
+                                        <h2 className="text-[20px] font-black uppercase italic tracking-tight mb-1">Institutional Alpha Portfolio</h2>
+                                        <p className="text-[11px] text-[#0075ff] font-black uppercase tracking-[0.2em]">Automated Selection • Conviction Weighted</p>
+                                    </div>
+                                    <div className="text-right">
+                                        <p className="text-[10px] font-black text-white/30 uppercase tracking-widest mb-1">Total Conviction</p>
+                                        <p className="text-[24px] font-black text-white">{(aiPortfolio?.total_conviction || 0).toFixed(2)}</p>
+                                    </div>
+                                </div>
+
+                                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-5 gap-4">
+                                    {aiPortfolio?.top_assets?.map((asset: any, i: number) => (
+                                        <div key={i} className="bg-black/40 border border-white/10 p-5 rounded-2xl hover:border-[#0075ff]/50 transition-all group">
+                                            <div className="flex items-center justify-between mb-4">
+                                                <span className="text-[20px] font-black text-[#0075ff]">0{i + 1}</span>
+                                                <span className="text-[10px] font-black text-white group-hover:text-[#0075ff] transition-colors">{asset.allocation}%</span>
+                                            </div>
+                                            <p className="text-[13px] font-black text-white truncate mb-1 uppercase">{asset.market}</p>
+                                            <div className="h-1 w-full bg-white/5 rounded-full overflow-hidden mt-3">
+                                                <div className="h-full bg-[#0075ff] transition-all duration-1000" style={{ width: `${asset.allocation}%` }} />
+                                            </div>
+                                        </div>
+                                    )) || (
+                                            <div className="col-span-5 py-12 text-center text-white/10 font-bold uppercase italic tracking-widest">
+                                                {isAuthenticated && (stats as any).subscriptionStatus !== 'free' ? 'Constructing Portfolio...' : 'Requires Pro/Elite Authorization'}
+                                            </div>
+                                        )}
+                                </div>
+                                {(stats as any).subscriptionStatus === 'free' && (
+                                    <div className="mt-8 flex justify-center">
+                                        <button onClick={() => setActiveTab("SUBSCRIPTION")} className="px-8 py-3 bg-[#0075ff] text-white font-black text-[10px] tracking-[0.2em] uppercase rounded-xl hover:bg-[#0075ff]/80 transition-all">Unlock Institutional Alpha</button>
+                                    </div>
+                                )}
+                            </div>
                         </div>
 
                         <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
@@ -1237,6 +1504,136 @@ export default function Home() {
                                     )}
                                 </div>
                             </section>
+                        </div>
+                    </div>
+                )}
+
+                {activeTab === "SOCIAL" && (
+                    <div className="animate-in fade-in zoom-in-95 duration-500 max-w-4xl mx-auto px-4 pb-20">
+                        <div className="flex flex-col md:flex-row items-center justify-between mb-12 gap-6 text-center md:text-left">
+                            <div>
+                                <h1 className="text-[32px] font-black uppercase tracking-tighter mb-2 italic">Institutional Matrix</h1>
+                                <p className="text-white/30 text-[12px] font-bold tracking-[0.3em] uppercase italic">Top Performing Social Nodes</p>
+                            </div>
+                            <div className="flex gap-4">
+                                <button className="px-6 py-2.5 bg-white/5 border border-white/10 rounded-xl text-[10px] font-black uppercase tracking-widest hover:bg-white/10 transition-all">My Node Profile</button>
+                                <button className="px-6 py-2.5 bg-[#0075ff] text-white rounded-xl text-[10px] font-black uppercase tracking-widest hover:bg-[#0075ff]/80 shadow-[0_4px_20px_rgba(0,117,255,0.4)] transition-all">Connect Identity</button>
+                            </div>
+                        </div>
+
+                        {/* Professional Tabular Leaderboard */}
+                        <div className="bg-[#1a1f37]/40 backdrop-blur-3xl border border-white/10 rounded-[24px] shadow-2xl overflow-hidden mb-20 group/table">
+                            <div className="p-8 border-b border-white/5 bg-gradient-to-r from-white/[0.02] to-transparent flex items-center justify-between">
+                                <div>
+                                    <h3 className="text-[20px] font-black text-white uppercase tracking-tight mb-1">Institutional Performance Matrix</h3>
+                                    <p className="text-[10px] text-white/40 font-bold uppercase tracking-[0.2em]">Sovereign Node Leaderboard • Real-time Alpha</p>
+                                </div>
+                                <div className="flex items-center gap-3 px-4 py-2 bg-[#0075ff]/10 border border-[#0075ff]/20 rounded-full">
+                                    <span className="w-2 h-2 rounded-full bg-[#0075ff] animate-pulse" />
+                                    <span className="text-[10px] font-black text-[#0075ff] uppercase tracking-widest">Tracking 124 Nodes</span>
+                                </div>
+                            </div>
+
+                            <div className="overflow-x-auto">
+                                <table className="w-full border-collapse">
+                                    <thead>
+                                        <tr className="border-b border-white/5 bg-white/[0.01]">
+                                            <th className="px-8 py-5 text-left text-[10px] font-black text-white/30 uppercase tracking-[0.2em] w-20">Rank</th>
+                                            <th className="px-8 py-5 text-left text-[10px] font-black text-white/30 uppercase tracking-[0.2em] w-24">Profile</th>
+                                            <th className="px-8 py-5 text-left text-[10px] font-black text-white/30 uppercase tracking-[0.2em]">Nodal Identity</th>
+                                            <th className="px-8 py-5 text-right text-[10px] font-black text-white/30 uppercase tracking-[0.2em]">Total PNL</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody className="divide-y divide-white/[0.03]">
+                                        {leaderboard.map((trader, i) => (
+                                            <tr
+                                                key={trader.proxyWallet || i}
+                                                onClick={() => window.open(`https://polymarket.com/profile/${trader.proxyWallet}`, '_blank')}
+                                                className="group/row hover:bg-white/[0.04] transition-all cursor-pointer relative"
+                                            >
+                                                <td className="px-8 py-7 text-center">
+                                                    <span className={`text-[20px] font-black italic tracking-tighter ${i < 3 ? 'text-[#0075ff]' : 'text-white/20'}`}>
+                                                        #{trader.rank}
+                                                    </span>
+                                                </td>
+                                                <td className="px-8 py-7">
+                                                    <div className="w-14 h-14 rounded-2xl bg-gradient-to-br from-white/20 to-transparent p-[1px] shadow-xl group-hover/row:scale-105 transition-transform duration-500 relative overflow-hidden">
+                                                        <div className="w-full h-full rounded-2xl bg-[#0b0e1f] flex items-center justify-center overflow-hidden">
+                                                            {trader.profile_image ? (
+                                                                <img
+                                                                    src={trader.profile_image}
+                                                                    className="w-full h-full object-cover group-hover/row:scale-110 transition-transform duration-700"
+                                                                    alt="profile"
+                                                                />
+                                                            ) : (
+                                                                <div
+                                                                    className="w-full h-full"
+                                                                    style={{
+                                                                        background: (() => {
+                                                                            const seed = trader.proxyWallet || trader.userName || "default";
+                                                                            let hash = 0;
+                                                                            for (let j = 0; j < seed.length; j++) {
+                                                                                hash = seed.charCodeAt(j) + ((hash << 5) - hash);
+                                                                            }
+                                                                            const colors = [
+                                                                                `hsl(${Math.abs(hash % 360)}, 70%, 50%)`,
+                                                                                `hsl(${Math.abs((hash * 13) % 360)}, 60%, 40%)`,
+                                                                                `hsl(${Math.abs((hash * 7) % 360)}, 80%, 60%)`
+                                                                            ];
+                                                                            return `radial-gradient(at 66% 77%, ${colors[0]} 0px, transparent 50%), radial-gradient(at 29% 97%, ${colors[1]} 0px, transparent 50%), radial-gradient(at 9% 29%, ${colors[2]} 0px, transparent 50%), #0b0e1f`;
+                                                                        })()
+                                                                    }}
+                                                                />
+                                                            )}
+                                                        </div>
+                                                        <div className="absolute inset-0 bg-gradient-to-t from-[#0b0e1f]/40 to-transparent opacity-0 group-hover/row:opacity-100 transition-opacity" />
+                                                    </div>
+                                                </td>
+                                                <td className="px-8 py-7">
+                                                    <div>
+                                                        <div className="text-[16px] font-bold text-white group-hover/row:text-[#0075ff] transition-colors leading-none mb-1.5 tracking-tight">
+                                                            {trader.userName || "Institutional Node"}
+                                                        </div>
+                                                        <div className="text-[10px] text-white/30 font-mono tracking-wider">
+                                                            {trader.proxyWallet?.slice(0, 10)}...{trader.proxyWallet?.slice(-8)}
+                                                        </div>
+                                                    </div>
+                                                </td>
+                                                <td className="px-8 py-7 text-right">
+                                                    <div className="flex flex-col items-end">
+                                                        <span className="text-[22px] font-black text-[#01b574] tracking-tight mb-0.5">
+                                                            +${parseFloat(trader.pnl).toLocaleString()}
+                                                        </span>
+                                                        <span className="text-[8px] font-black text-[#01b574]/40 uppercase tracking-[0.2em]">Institutional PNL</span>
+                                                    </div>
+                                                </td>
+                                            </tr>
+                                        ))}
+                                    </tbody>
+                                </table>
+
+                                {leaderboard.length === 0 && (
+                                    <div className="py-32 text-center bg-white/[0.01]">
+                                        <div className="w-12 h-12 border-2 border-[#0075ff]/20 border-t-[#0075ff] rounded-full animate-spin mx-auto mb-6" />
+                                        <p className="text-white/20 font-black uppercase italic tracking-[0.5em] text-[10px] animate-pulse">Syncing Nodal Network</p>
+                                    </div>
+                                )}
+                            </div>
+
+                            <div className="p-6 bg-white/[0.02] border-t border-white/5 flex items-center justify-between">
+                                <div className="flex items-center gap-3">
+                                    <div className="w-8 h-8 rounded-lg bg-[#0075ff]/10 flex items-center justify-center border border-[#0075ff]/20">
+                                        <Icons.Matrix />
+                                    </div>
+                                    <p className="text-[9px] font-black text-white/20 uppercase tracking-[0.3em]">Discovery Radar 2.4.1 Active</p>
+                                </div>
+                                <button
+                                    onClick={() => fetchLeaderboard()}
+                                    className="px-6 py-2 bg-[#0075ff]/10 border border-[#0075ff]/20 rounded-xl text-[10px] font-black text-[#0075ff] uppercase tracking-widest hover:bg-[#0075ff]/20 transition-all active:scale-95"
+                                >
+                                    Refresh Matrix
+                                </button>
+                            </div>
                         </div>
                     </div>
                 )}
@@ -1306,6 +1703,58 @@ export default function Home() {
                                 >
                                     Provision Expansion Node
                                 </button>
+                            </div>
+                        </div>
+
+                        <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-12">
+                            {[
+                                { tier: "FREE", price: "$0", slots: "2", active: (stats as any).subscriptionStatus === 'free' },
+                                { tier: "PRO", price: "$25", slots: "10", active: (stats as any).subscriptionStatus === 'pro', color: "#0075ff" },
+                                { tier: "ELITE", price: "$99", slots: "100", active: (stats as any).subscriptionStatus === 'elite', color: "#ff7e00" }
+                            ].map((t) => (
+                                <div key={t.tier} className={`p-8 rounded-2xl border ${t.active ? 'bg-white/5 border-white/40 shadow-2xl' : 'bg-black/40 border-white/5 opacity-60 hover:opacity-100'} transition-all flex flex-col items-center text-center`}>
+                                    <h4 className="text-[10px] font-black tracking-[0.3em] uppercase mb-4" style={{ color: t.color || 'inherit' }}>{t.tier} Tier</h4>
+                                    <p className="text-3xl font-black text-white mb-2">{t.price}</p>
+                                    <p className="text-[11px] text-white/40 mb-8 font-bold">{t.slots} CLUSTER NODES</p>
+                                    {!t.active && (
+                                        <button
+                                            onClick={() => window.location.href = `${API_BASE}/billing/debug/upgrade?tier=${t.tier.toLowerCase()}`}
+                                            className="w-full py-3 border border-white/20 rounded-xl text-[9px] font-black uppercase tracking-widest hover:bg-white hover:text-black transition-all"
+                                        >
+                                            Upgrade
+                                        </button>
+                                    )}
+                                    {t.active && <span className="text-[9px] font-black text-[#01b574] uppercase tracking-widest">ACTIVE SESSION</span>}
+                                </div>
+                            ))}
+                        </div>
+
+                        {/* Referral Section */}
+                        <div className="bg-gradient-to-br from-[#121212] to-black border border-white/10 p-10 rounded-3xl mb-12 relative overflow-hidden">
+                            <div className="absolute top-0 right-0 w-64 h-64 bg-[#01b574]/5 rounded-full blur-3xl" />
+                            <div className="relative z-10 grid grid-cols-1 lg:grid-cols-2 gap-12 items-center">
+                                <div>
+                                    <h1 className="text-2xl font-black uppercase italic tracking-tight mb-4">Viral Growth Tunnel</h1>
+                                    <p className="text-[12px] text-white/60 leading-relaxed mb-8">
+                                        Invite other institutional entities to Pclonecopy. For every successful tunnel activation, both parties receive **+1 permanent expansion node**.
+                                    </p>
+                                    <div className="flex gap-3">
+                                        <div className="flex-1 bg-white/5 border border-white/10 rounded-xl px-5 py-4 font-mono text-[12px] text-white/40 flex items-center justify-between">
+                                            <span>{(stats as any).referralCode || 'REF-8321X9'}</span>
+                                            <button onClick={() => navigator.clipboard.writeText((stats as any).referralCode)} className="text-[#01b574] hover:text-white transition-colors"><Icons.Matrix /></button>
+                                        </div>
+                                    </div>
+                                </div>
+                                <div className="grid grid-cols-2 gap-4">
+                                    <div className="bg-white/5 p-6 rounded-2xl border border-white/5 text-center">
+                                        <p className="text-[10px] font-black text-white/20 uppercase tracking-widest mb-1">Total Referrals</p>
+                                        <p className="text-3xl font-black text-white">{(stats as any).referralCount || 0}</p>
+                                    </div>
+                                    <div className="bg-white/5 p-6 rounded-2xl border border-white/5 text-center">
+                                        <p className="text-[10px] font-black text-white/20 uppercase tracking-widest mb-1">Earned Nodes</p>
+                                        <p className="text-3xl font-black text-[#01b574]">{(stats as any).referralCount || 0}</p>
+                                    </div>
+                                </div>
                             </div>
                         </div>
 
@@ -1490,6 +1939,6 @@ export default function Home() {
                 .slide-in-from-right-4 { animation-name: slide-in-from-right-4; }
                 .slide-in-from-top-6 { animation-name: slide-in-from-top-6; }
             `}</style>
-        </main>
+        </main >
     );
 }
