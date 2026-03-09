@@ -734,10 +734,9 @@ export default function Home() {
                         { id: "OVERVIEW", label: "Dashboard", icon: <Icons.Dashboard />, protected: true },
                         { id: "FLEET", label: "Node Matrix", icon: <Icons.Fleet />, protected: true },
                         { id: "REPLICATION", label: "Stream", icon: <Icons.Matrix />, protected: true },
-                        /* Phase 2-5 items hidden for Phase 1 release */
                         { id: "STRATEGY", label: "Intel Engine", icon: <Icons.Strategy />, protected: true },
                         { id: "SOCIAL", label: "Social Matrix", icon: <Icons.Messages />, protected: true },
-                        // { id: "SUBSCRIPTION", label: "Subscription", icon: <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round"><path d="M12 2v20M17 5H9.5a3.5 3.5 0 000 7h5a3.5 3.5 0 010 7H6" /></svg>, protected: true },
+                        { id: "SUBSCRIPTION", label: "Subscription", icon: <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round"><path d="M12 2v20M17 5H9.5a3.5 3.5 0 000 7h5a3.5 3.5 0 010 7H6" /></svg>, protected: true },
                         { id: "SETTINGS", label: "Settings", icon: <Icons.Settings />, protected: true }
                     ].map((tab) => (
                         <button
@@ -1613,6 +1612,99 @@ export default function Home() {
                                     </tbody>
                                 </table>
                             </div>
+                        </div>
+                    </div>
+                )}
+
+                {activeTab === "SUBSCRIPTION" && (
+                    <div className="animate-in fade-in zoom-in-95 duration-500 max-w-4xl mx-auto">
+                        <div className="mb-12 text-center">
+                            <h1 className="text-[32px] font-black uppercase tracking-tighter mb-2 italic">Ecosystem Scaling</h1>
+                            <p className="text-white/30 text-[12px] font-bold tracking-[0.3em] uppercase italic">Cluster Allocation & Unit Expansion</p>
+                        </div>
+
+                        <div className="grid grid-cols-1 md:grid-cols-2 gap-8 mb-12">
+                            {/* Allocation Stats */}
+                            <div className="bg-white/[0.03] border border-white/10 p-10 rounded-2xl shadow-xl">
+                                <div className="flex items-center gap-4 mb-10">
+                                    <div className="w-12 h-12 rounded-xl bg-[#0075ff]/10 flex items-center justify-center">
+                                        <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="#0075ff" strokeWidth="2.5"><path d="M12 2v20M17 5H9.5a3.5 3.5 0 000 7h5a3.5 3.5 0 010 7H6" /></svg>
+                                    </div>
+                                    <div>
+                                        <h3 className="text-[14px] font-black uppercase text-white tracking-wider">Allocation Status</h3>
+                                        <span className="text-[10px] font-black text-[#01b574] uppercase tracking-[0.2em]">Institutional Tier</span>
+                                    </div>
+                                </div>
+
+                                <div className="space-y-6">
+                                    <div>
+                                        <div className="flex justify-between items-end mb-3">
+                                            <span className="text-[11px] font-black text-white/40 uppercase tracking-widest">Node Utilization</span>
+                                            <span className="text-[18px] font-black text-white">{wallets.length} <span className="text-[12px] text-white/20">/ {2 + ((stats as any).extraSlots || 0)} UNITS</span></span>
+                                        </div>
+                                        <div className="h-2 w-full bg-white/5 rounded-full overflow-hidden p-[1px]">
+                                            <div
+                                                className="h-full bg-gradient-to-r from-[#0075ff] to-[#01b574] rounded-full transition-all duration-1000"
+                                                style={{ width: `${Math.min(100, (wallets.length / (2 + ((stats as any).extraSlots || 0))) * 100)}%` }}
+                                            />
+                                        </div>
+                                    </div>
+                                    <div className="flex items-center justify-between pt-4 border-t border-white/5">
+                                        <span className="text-[11px] font-black text-white/40 uppercase tracking-widest">Base Cluster Allocation</span>
+                                        <span className="text-[12px] font-black text-white">2 NODES</span>
+                                    </div>
+                                    <div className="flex items-center justify-between">
+                                        <span className="text-[11px] font-black text-white/40 uppercase tracking-widest">Purchased Expansion Slots</span>
+                                        <span className="text-[12px] font-black text-[#0075ff]">{(stats as any).extraSlots || 0} NODES</span>
+                                    </div>
+                                </div>
+                            </div>
+
+                            {/* Payment Card */}
+                            <div className="bg-[#0075ff]/5 border border-[#0075ff]/20 p-10 rounded-2xl shadow-xl flex flex-col justify-between relative overflow-hidden group">
+                                <div className="absolute -top-24 -right-24 w-64 h-64 bg-[#0075ff]/10 rounded-full blur-3xl group-hover:bg-[#0075ff]/20 transition-all" />
+
+                                <div>
+                                    <h3 className="text-[20px] font-black uppercase italic tracking-tight mb-2">Expansion Module</h3>
+                                    <p className="text-[12px] text-white/60 leading-relaxed mb-8">
+                                        Provision additional high-latency execution nodes to your cluster. No subscription required.
+                                    </p>
+                                    <div className="flex items-baseline gap-2 mb-8">
+                                        <span className="text-4xl font-black text-white">$5</span>
+                                        <span className="text-[12px] font-bold text-white/40 uppercase tracking-widest">/ NODE UNIT</span>
+                                    </div>
+                                </div>
+
+                                <button
+                                    onClick={handleExtraSlotPurchase}
+                                    className="w-full py-5 bg-white text-black font-black text-[11px] uppercase tracking-[0.2em] rounded-xl hover:bg-white/90 active:scale-[0.98] transition-all shadow-2xl relative z-10"
+                                >
+                                    Provision Expansion Node
+                                </button>
+                            </div>
+                        </div>
+
+                        <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-12">
+                            {[
+                                { tier: "FREE", price: "$0", slots: "2", active: (stats as any).subscriptionStatus === 'free' },
+                                { tier: "PRO", price: "$25", slots: "10", active: (stats as any).subscriptionStatus === 'pro', color: "#0075ff" },
+                                { tier: "ELITE", price: "$99", slots: "100", active: (stats as any).subscriptionStatus === 'elite', color: "#ff7e00" }
+                            ].map((t) => (
+                                <div key={t.tier} className={`p-8 rounded-2xl border ${t.active ? 'bg-white/5 border-white/40 shadow-2xl' : 'bg-black/40 border-white/5 opacity-60 hover:opacity-100'} transition-all flex flex-col items-center text-center`}>
+                                    <h4 className="text-[10px] font-black tracking-[0.3em] uppercase mb-4" style={{ color: t.color || 'inherit' }}>{t.tier} Tier</h4>
+                                    <p className="text-3xl font-black text-white mb-2">{t.price}</p>
+                                    <p className="text-[11px] text-white/40 mb-8 font-bold">{t.slots} CLUSTER NODES</p>
+                                    {!t.active && (
+                                        <button
+                                            onClick={() => window.location.href = `${API_BASE}/billing/debug/upgrade?tier=${t.tier.toLowerCase()}`}
+                                            className="w-full py-3 border border-white/20 rounded-xl text-[9px] font-black uppercase tracking-widest hover:bg-white hover:text-black transition-all"
+                                        >
+                                            Upgrade
+                                        </button>
+                                    )}
+                                    {t.active && <span className="text-[9px] font-black text-[#01b574] uppercase tracking-widest">ACTIVE SESSION</span>}
+                                </div>
+                            ))}
                         </div>
                     </div>
                 )}
