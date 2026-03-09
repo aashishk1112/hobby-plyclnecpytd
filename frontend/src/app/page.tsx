@@ -727,9 +727,10 @@ export default function Home() {
                         { id: "OVERVIEW", label: "Dashboard", icon: <Icons.Dashboard />, protected: true },
                         { id: "FLEET", label: "Node Matrix", icon: <Icons.Fleet />, protected: true },
                         { id: "REPLICATION", label: "Stream", icon: <Icons.Matrix />, protected: true },
-                        { id: "STRATEGY", label: "Intel Engine", icon: <Icons.Strategy />, protected: true },
-                        { id: "SOCIAL", label: "Social Matrix", icon: <Icons.Messages />, protected: true },
-                        { id: "SUBSCRIPTION", label: "Subscription", icon: <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round"><path d="M12 2v20M17 5H9.5a3.5 3.5 0 000 7h5a3.5 3.5 0 010 7H6" /></svg>, protected: true },
+                        /* Phase 2-5 items hidden for Phase 1 release */
+                        // { id: "STRATEGY", label: "Intel Engine", icon: <Icons.Strategy />, protected: true },
+                        // { id: "SOCIAL", label: "Social Matrix", icon: <Icons.Messages />, protected: true },
+                        // { id: "SUBSCRIPTION", label: "Subscription", icon: <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round"><path d="M12 2v20M17 5H9.5a3.5 3.5 0 000 7h5a3.5 3.5 0 010 7H6" /></svg>, protected: true },
                         { id: "SETTINGS", label: "Settings", icon: <Icons.Settings />, protected: true }
                     ].map((tab) => (
                         <button
@@ -1220,23 +1221,6 @@ export default function Home() {
                                                     )}
                                                     <div className="flex items-center gap-4">
                                                         <span className="text-[9px] font-black text-white/20 tracking-widest uppercase">Sequence {i + 1}</span>
-                                                        {!isTerminated && !isDisabled && (
-                                                            <>
-                                                                <span className="w-1 h-1 bg-white/10 rounded-full" />
-                                                                <div className="flex items-center gap-3 bg-white/5 px-3 py-1 rounded-lg">
-                                                                    <span className="text-[8px] font-black text-white/40 uppercase tracking-widest">Weight</span>
-                                                                    <input
-                                                                        type="range"
-                                                                        min="1"
-                                                                        max="100"
-                                                                        value={allocationWeights[addr] || "50"}
-                                                                        onChange={(e) => handleUpdateAllocation(addr, e.target.value)}
-                                                                        className="w-16 h-1 bg-white/10 rounded-full appearance-none cursor-pointer accent-[#0075ff]"
-                                                                    />
-                                                                    <span className="text-[10px] font-bold text-[#0075ff] w-6">{allocationWeights[addr] || "50"}%</span>
-                                                                </div>
-                                                            </>
-                                                        )}
                                                         <span className="w-1 h-1 bg-white/10 rounded-full" />
                                                         {isTerminated ? (
                                                             <span className="text-rose-500 text-[9px] font-black uppercase tracking-widest">Permanently Terminated</span>
@@ -1508,265 +1492,6 @@ export default function Home() {
                     </div>
                 )}
 
-                {activeTab === "SOCIAL" && (
-                    <div className="animate-in fade-in zoom-in-95 duration-500 max-w-4xl mx-auto px-4 pb-20">
-                        <div className="flex flex-col md:flex-row items-center justify-between mb-12 gap-6 text-center md:text-left">
-                            <div>
-                                <h1 className="text-[32px] font-black uppercase tracking-tighter mb-2 italic">Institutional Matrix</h1>
-                                <p className="text-white/30 text-[12px] font-bold tracking-[0.3em] uppercase italic">Top Performing Social Nodes</p>
-                            </div>
-                            <div className="flex gap-4">
-                                <button className="px-6 py-2.5 bg-white/5 border border-white/10 rounded-xl text-[10px] font-black uppercase tracking-widest hover:bg-white/10 transition-all">My Node Profile</button>
-                                <button className="px-6 py-2.5 bg-[#0075ff] text-white rounded-xl text-[10px] font-black uppercase tracking-widest hover:bg-[#0075ff]/80 shadow-[0_4px_20px_rgba(0,117,255,0.4)] transition-all">Connect Identity</button>
-                            </div>
-                        </div>
-
-                        {/* Professional Tabular Leaderboard */}
-                        <div className="bg-[#1a1f37]/40 backdrop-blur-3xl border border-white/10 rounded-[24px] shadow-2xl overflow-hidden mb-20 group/table">
-                            <div className="p-8 border-b border-white/5 bg-gradient-to-r from-white/[0.02] to-transparent flex items-center justify-between">
-                                <div>
-                                    <h3 className="text-[20px] font-black text-white uppercase tracking-tight mb-1">Institutional Performance Matrix</h3>
-                                    <p className="text-[10px] text-white/40 font-bold uppercase tracking-[0.2em]">Sovereign Node Leaderboard • Real-time Alpha</p>
-                                </div>
-                                <div className="flex items-center gap-3 px-4 py-2 bg-[#0075ff]/10 border border-[#0075ff]/20 rounded-full">
-                                    <span className="w-2 h-2 rounded-full bg-[#0075ff] animate-pulse" />
-                                    <span className="text-[10px] font-black text-[#0075ff] uppercase tracking-widest">Tracking 124 Nodes</span>
-                                </div>
-                            </div>
-
-                            <div className="overflow-x-auto">
-                                <table className="w-full border-collapse">
-                                    <thead>
-                                        <tr className="border-b border-white/5 bg-white/[0.01]">
-                                            <th className="px-8 py-5 text-left text-[10px] font-black text-white/30 uppercase tracking-[0.2em] w-20">Rank</th>
-                                            <th className="px-8 py-5 text-left text-[10px] font-black text-white/30 uppercase tracking-[0.2em] w-24">Profile</th>
-                                            <th className="px-8 py-5 text-left text-[10px] font-black text-white/30 uppercase tracking-[0.2em]">Nodal Identity</th>
-                                            <th className="px-8 py-5 text-right text-[10px] font-black text-white/30 uppercase tracking-[0.2em]">Total PNL</th>
-                                        </tr>
-                                    </thead>
-                                    <tbody className="divide-y divide-white/[0.03]">
-                                        {leaderboard.map((trader, i) => (
-                                            <tr
-                                                key={trader.proxyWallet || i}
-                                                onClick={() => window.open(`https://polymarket.com/profile/${trader.proxyWallet}`, '_blank')}
-                                                className="group/row hover:bg-white/[0.04] transition-all cursor-pointer relative"
-                                            >
-                                                <td className="px-8 py-7 text-center">
-                                                    <span className={`text-[20px] font-black italic tracking-tighter ${i < 3 ? 'text-[#0075ff]' : 'text-white/20'}`}>
-                                                        #{trader.rank}
-                                                    </span>
-                                                </td>
-                                                <td className="px-8 py-7">
-                                                    <div className="w-14 h-14 rounded-2xl bg-gradient-to-br from-white/20 to-transparent p-[1px] shadow-xl group-hover/row:scale-105 transition-transform duration-500 relative overflow-hidden">
-                                                        <div className="w-full h-full rounded-2xl bg-[#0b0e1f] flex items-center justify-center overflow-hidden">
-                                                            {trader.profile_image ? (
-                                                                <img
-                                                                    src={trader.profile_image}
-                                                                    className="w-full h-full object-cover group-hover/row:scale-110 transition-transform duration-700"
-                                                                    alt="profile"
-                                                                />
-                                                            ) : (
-                                                                <div
-                                                                    className="w-full h-full"
-                                                                    style={{
-                                                                        background: (() => {
-                                                                            const seed = trader.proxyWallet || trader.userName || "default";
-                                                                            let hash = 0;
-                                                                            for (let j = 0; j < seed.length; j++) {
-                                                                                hash = seed.charCodeAt(j) + ((hash << 5) - hash);
-                                                                            }
-                                                                            const colors = [
-                                                                                `hsl(${Math.abs(hash % 360)}, 70%, 50%)`,
-                                                                                `hsl(${Math.abs((hash * 13) % 360)}, 60%, 40%)`,
-                                                                                `hsl(${Math.abs((hash * 7) % 360)}, 80%, 60%)`
-                                                                            ];
-                                                                            return `radial-gradient(at 66% 77%, ${colors[0]} 0px, transparent 50%), radial-gradient(at 29% 97%, ${colors[1]} 0px, transparent 50%), radial-gradient(at 9% 29%, ${colors[2]} 0px, transparent 50%), #0b0e1f`;
-                                                                        })()
-                                                                    }}
-                                                                />
-                                                            )}
-                                                        </div>
-                                                        <div className="absolute inset-0 bg-gradient-to-t from-[#0b0e1f]/40 to-transparent opacity-0 group-hover/row:opacity-100 transition-opacity" />
-                                                    </div>
-                                                </td>
-                                                <td className="px-8 py-7">
-                                                    <div>
-                                                        <div className="text-[16px] font-bold text-white group-hover/row:text-[#0075ff] transition-colors leading-none mb-1.5 tracking-tight">
-                                                            {trader.userName || "Institutional Node"}
-                                                        </div>
-                                                        <div className="text-[10px] text-white/30 font-mono tracking-wider">
-                                                            {trader.proxyWallet?.slice(0, 10)}...{trader.proxyWallet?.slice(-8)}
-                                                        </div>
-                                                    </div>
-                                                </td>
-                                                <td className="px-8 py-7 text-right">
-                                                    <div className="flex flex-col items-end">
-                                                        <span className="text-[22px] font-black text-[#01b574] tracking-tight mb-0.5">
-                                                            +${parseFloat(trader.pnl).toLocaleString()}
-                                                        </span>
-                                                        <span className="text-[8px] font-black text-[#01b574]/40 uppercase tracking-[0.2em]">Institutional PNL</span>
-                                                    </div>
-                                                </td>
-                                            </tr>
-                                        ))}
-                                    </tbody>
-                                </table>
-
-                                {leaderboard.length === 0 && (
-                                    <div className="py-32 text-center bg-white/[0.01]">
-                                        <div className="w-12 h-12 border-2 border-[#0075ff]/20 border-t-[#0075ff] rounded-full animate-spin mx-auto mb-6" />
-                                        <p className="text-white/20 font-black uppercase italic tracking-[0.5em] text-[10px] animate-pulse">Syncing Nodal Network</p>
-                                    </div>
-                                )}
-                            </div>
-
-                            <div className="p-6 bg-white/[0.02] border-t border-white/5 flex items-center justify-between">
-                                <div className="flex items-center gap-3">
-                                    <div className="w-8 h-8 rounded-lg bg-[#0075ff]/10 flex items-center justify-center border border-[#0075ff]/20">
-                                        <Icons.Matrix />
-                                    </div>
-                                    <p className="text-[9px] font-black text-white/20 uppercase tracking-[0.3em]">Discovery Radar 2.4.1 Active</p>
-                                </div>
-                                <button
-                                    onClick={() => fetchLeaderboard()}
-                                    className="px-6 py-2 bg-[#0075ff]/10 border border-[#0075ff]/20 rounded-xl text-[10px] font-black text-[#0075ff] uppercase tracking-widest hover:bg-[#0075ff]/20 transition-all active:scale-95"
-                                >
-                                    Refresh Matrix
-                                </button>
-                            </div>
-                        </div>
-                    </div>
-                )}
-
-                {activeTab === "SUBSCRIPTION" && (
-                    <div className="animate-in fade-in zoom-in-95 duration-500 max-w-4xl mx-auto">
-                        <div className="mb-12 text-center">
-                            <h1 className="text-[40px] font-black uppercase tracking-tighter italic mb-3">Service Allocation</h1>
-                            <p className="text-white/30 text-[12px] font-bold tracking-[0.3em] uppercase italic">Manage institutional cluster limits</p>
-                        </div>
-
-                        <div className="grid grid-cols-1 md:grid-cols-2 gap-8 mb-12">
-                            {/* Status Card */}
-                            <div className="bg-white/[0.03] border border-white/10 p-10 rounded-2xl shadow-xl backdrop-blur-xl group hover:border-[#0075ff]/50 transition-all">
-                                <div className="flex items-center gap-4 mb-8">
-                                    <div className="w-12 h-12 rounded-xl bg-[#0075ff]/20 flex items-center justify-center border border-[#0075ff]/30">
-                                        <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="#0075ff" strokeWidth="2.5"><path d="M12 2v20M17 5H9.5a3.5 3.5 0 000 7h5a3.5 3.5 0 010 7H6" /></svg>
-                                    </div>
-                                    <div>
-                                        <h3 className="text-[14px] font-black uppercase text-white tracking-wider">Allocation Status</h3>
-                                        <span className="text-[10px] font-black text-[#01b574] uppercase tracking-[0.2em]">Institutional Tier</span>
-                                    </div>
-                                </div>
-
-                                <div className="space-y-6">
-                                    <div>
-                                        <div className="flex justify-between items-end mb-3">
-                                            <span className="text-[11px] font-black text-white/40 uppercase tracking-widest">Node Utilization</span>
-                                            <span className="text-[18px] font-black text-white">{wallets.length} <span className="text-[12px] text-white/20">/ {2 + ((stats as any).extraSlots || 0)} UNITS</span></span>
-                                        </div>
-                                        <div className="h-2 w-full bg-white/5 rounded-full overflow-hidden p-[1px]">
-                                            <div
-                                                className="h-full bg-gradient-to-r from-[#0075ff] to-[#01b574] rounded-full transition-all duration-1000"
-                                                style={{ width: `${Math.min(100, (wallets.length / (2 + ((stats as any).extraSlots || 0))) * 100)}%` }}
-                                            />
-                                        </div>
-                                    </div>
-                                    <div className="flex items-center justify-between pt-4 border-t border-white/5">
-                                        <span className="text-[11px] font-black text-white/40 uppercase tracking-widest">Base Cluster Allocation</span>
-                                        <span className="text-[12px] font-black text-white">2 NODES</span>
-                                    </div>
-                                    <div className="flex items-center justify-between">
-                                        <span className="text-[11px] font-black text-white/40 uppercase tracking-widest">Purchased Expansion Slots</span>
-                                        <span className="text-[12px] font-black text-[#0075ff]">{(stats as any).extraSlots || 0} NODES</span>
-                                    </div>
-                                </div>
-                            </div>
-
-                            {/* Payment Card */}
-                            <div className="bg-[#0075ff]/5 border border-[#0075ff]/20 p-10 rounded-2xl shadow-xl flex flex-col justify-between relative overflow-hidden group">
-                                <div className="absolute -top-24 -right-24 w-64 h-64 bg-[#0075ff]/10 rounded-full blur-3xl group-hover:bg-[#0075ff]/20 transition-all" />
-
-                                <div>
-                                    <h3 className="text-[20px] font-black uppercase italic tracking-tight mb-2">Expansion Module</h3>
-                                    <p className="text-[12px] text-white/60 leading-relaxed mb-8">
-                                        Provision additional high-latency execution nodes to your cluster. No subscription required.
-                                    </p>
-                                    <div className="flex items-baseline gap-2 mb-8">
-                                        <span className="text-4xl font-black text-white">$5</span>
-                                        <span className="text-[12px] font-bold text-white/40 uppercase tracking-widest">/ NODE UNIT</span>
-                                    </div>
-                                </div>
-
-                                <button
-                                    onClick={handleExtraSlotPurchase}
-                                    className="w-full py-5 bg-white text-black font-black text-[11px] uppercase tracking-[0.2em] rounded-xl hover:bg-white/90 active:scale-[0.98] transition-all shadow-2xl relative z-10"
-                                >
-                                    Provision Expansion Node
-                                </button>
-                            </div>
-                        </div>
-
-                        <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-12">
-                            {[
-                                { tier: "FREE", price: "$0", slots: "2", active: (stats as any).subscriptionStatus === 'free' },
-                                { tier: "PRO", price: "$25", slots: "10", active: (stats as any).subscriptionStatus === 'pro', color: "#0075ff" },
-                                { tier: "ELITE", price: "$99", slots: "100", active: (stats as any).subscriptionStatus === 'elite', color: "#ff7e00" }
-                            ].map((t) => (
-                                <div key={t.tier} className={`p-8 rounded-2xl border ${t.active ? 'bg-white/5 border-white/40 shadow-2xl' : 'bg-black/40 border-white/5 opacity-60 hover:opacity-100'} transition-all flex flex-col items-center text-center`}>
-                                    <h4 className="text-[10px] font-black tracking-[0.3em] uppercase mb-4" style={{ color: t.color || 'inherit' }}>{t.tier} Tier</h4>
-                                    <p className="text-3xl font-black text-white mb-2">{t.price}</p>
-                                    <p className="text-[11px] text-white/40 mb-8 font-bold">{t.slots} CLUSTER NODES</p>
-                                    {!t.active && (
-                                        <button
-                                            onClick={() => window.location.href = `${API_BASE}/billing/debug/upgrade?tier=${t.tier.toLowerCase()}`}
-                                            className="w-full py-3 border border-white/20 rounded-xl text-[9px] font-black uppercase tracking-widest hover:bg-white hover:text-black transition-all"
-                                        >
-                                            Upgrade
-                                        </button>
-                                    )}
-                                    {t.active && <span className="text-[9px] font-black text-[#01b574] uppercase tracking-widest">ACTIVE SESSION</span>}
-                                </div>
-                            ))}
-                        </div>
-
-                        {/* Referral Section */}
-                        <div className="bg-gradient-to-br from-[#121212] to-black border border-white/10 p-10 rounded-3xl mb-12 relative overflow-hidden">
-                            <div className="absolute top-0 right-0 w-64 h-64 bg-[#01b574]/5 rounded-full blur-3xl" />
-                            <div className="relative z-10 grid grid-cols-1 lg:grid-cols-2 gap-12 items-center">
-                                <div>
-                                    <h1 className="text-2xl font-black uppercase italic tracking-tight mb-4">Viral Growth Tunnel</h1>
-                                    <p className="text-[12px] text-white/60 leading-relaxed mb-8">
-                                        Invite other institutional entities to Pclonecopy. For every successful tunnel activation, both parties receive **+1 permanent expansion node**.
-                                    </p>
-                                    <div className="flex gap-3">
-                                        <div className="flex-1 bg-white/5 border border-white/10 rounded-xl px-5 py-4 font-mono text-[12px] text-white/40 flex items-center justify-between">
-                                            <span>{(stats as any).referralCode || 'REF-8321X9'}</span>
-                                            <button onClick={() => navigator.clipboard.writeText((stats as any).referralCode)} className="text-[#01b574] hover:text-white transition-colors"><Icons.Matrix /></button>
-                                        </div>
-                                    </div>
-                                </div>
-                                <div className="grid grid-cols-2 gap-4">
-                                    <div className="bg-white/5 p-6 rounded-2xl border border-white/5 text-center">
-                                        <p className="text-[10px] font-black text-white/20 uppercase tracking-widest mb-1">Total Referrals</p>
-                                        <p className="text-3xl font-black text-white">{(stats as any).referralCount || 0}</p>
-                                    </div>
-                                    <div className="bg-white/5 p-6 rounded-2xl border border-white/5 text-center">
-                                        <p className="text-[10px] font-black text-white/20 uppercase tracking-widest mb-1">Earned Nodes</p>
-                                        <p className="text-3xl font-black text-[#01b574]">{(stats as any).referralCount || 0}</p>
-                                    </div>
-                                </div>
-                            </div>
-                        </div>
-
-                        <div className="bg-white/5 border border-white/10 p-8 rounded-xl backdrop-blur-md">
-                            <div className="flex items-center gap-4 text-white/40 italic">
-                                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><circle cx="12" cy="12" r="10" /><path d="M12 16v-4M12 8h.01" /></svg>
-                                <p className="text-[11px] font-bold tracking-wide uppercase">All transactions are processed through Stripe Secure Protocol. Expansion slots are permanent and linked to your Terminal Identity.</p>
-                            </div>
-                        </div>
-                    </div>
-                )}
-
                 {activeTab === "SETTINGS" && (
                     <div className="animate-in fade-in zoom-in-95 duration-500 max-w-2xl mx-auto">
                         <div className="mb-10 text-center">
@@ -1896,8 +1621,9 @@ export default function Home() {
                             </div>
                         </div>
                     </div>
-                )}
-            </div>
+                )
+                }
+            </div >
 
             <style jsx global>{`
                 @import url('https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&family=Inter:wght@400;500;600;700;800;900&display=swap');
