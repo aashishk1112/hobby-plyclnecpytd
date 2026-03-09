@@ -1524,8 +1524,8 @@ export default function Home() {
                             <p className="text-white/30 text-[12px] font-bold tracking-[0.3em] uppercase italic">AI Portfolio & Logic Constraints</p>
                         </div>
 
-                        {/* Phase 4 AI Portfolio features hidden in Phase 3 */}
-                        {/* <div className="mb-12 bg-[#0075ff]/5 border border-[#0075ff]/20 rounded-3xl p-10 relative overflow-hidden">
+                        {/* Phase 4 AI Portfolio features enabled */}
+                        <div className="mb-12 bg-[#0075ff]/5 border border-[#0075ff]/20 rounded-3xl p-10 relative overflow-hidden">
                             <div className="absolute top-0 right-0 p-10 opacity-10">
                                 <Icons.Strategy />
                             </div>
@@ -1565,7 +1565,7 @@ export default function Home() {
                                     </div>
                                 )}
                             </div>
-                        </div> */}
+                        </div>
 
                         <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
                             <section className="bg-black border border-white/10 p-8 rounded-xl shadow-xl space-y-8">
