@@ -47,14 +47,21 @@ class ConfigLoader:
         # Start with environment variables as default
         self._config = {k: v for k, v in os.environ.items()}
 
-        # Attempt to load from Secrets Manager if not in local mode
-        if os.getenv("IS_LOCAL", "false").lower() == "false":
+        # Attempt to load from Secrets Manager if not in mock mode
+        is_local = os.getenv("IS_LOCAL", "false").lower() == "true"
+        if os.getenv("MOCK_AUTH", "false").lower() == "false" or not is_local:
             try:
                 session = boto3.session.Session()
-                client = session.client(
-                    service_name='secretsmanager',
-                    region_name=region_name
-                )
+                client_kwargs = {
+                    "service_name": 'secretsmanager',
+                    "region_name": region_name
+                }
+                if is_local:
+                    client_kwargs["endpoint_url"] = "http://localhost:4566"
+                    client_kwargs["aws_access_key_id"] = "test"
+                    client_kwargs["aws_secret_access_key"] = "test"
+                
+                client = session.client(**client_kwargs)
                 get_secret_value_response = client.get_secret_value(
                     SecretId=secret_name
                 )
