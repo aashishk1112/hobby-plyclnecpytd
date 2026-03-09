@@ -1412,7 +1412,7 @@ export default function Home() {
                     </div >
                 )}
                 {/* Phase 3 features hidden in Phase 1 release */}
-                {/* {activeTab === "STRATEGY" && (
+                {activeTab === "STRATEGY" && (
                     <div className="animate-in fade-in zoom-in-95 duration-500 max-w-6xl mx-auto">
                         <div className="text-center mb-16">
                             <h1 className="text-[32px] font-black uppercase tracking-tighter mb-2 italic">Institutional Alpha Dashboard</h1>
@@ -1514,7 +1514,7 @@ export default function Home() {
                             </section>
                         </div>
                     </div>
-                )} */}
+                )}
 
                 {activeTab === "SETTINGS" && (
                     <div className="animate-in fade-in zoom-in-95 duration-500 max-w-2xl mx-auto">
