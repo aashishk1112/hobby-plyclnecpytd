@@ -992,7 +992,9 @@ export default function Home() {
                                 </div>
                             </div>
 
+                            {/* Phase 3+ Intelligence features hidden in Phase 1 release */}
                             {/* Whale Radar & Heatmap HUD */}
+                            {/*
                             <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 mb-8">
                                 <div className="bg-white/[0.03] border border-white/10 p-6 rounded-2xl">
                                     <div className="flex items-center justify-between mb-4">
@@ -1042,8 +1044,10 @@ export default function Home() {
                                     </div>
                                 </div>
                             </div>
+                            */}
 
                             {/* Predictive Intelligence Grid */}
+                            {/*
                             <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
                                 <div className="lg:col-span-2 bg-black border border-white/10 p-8 rounded-2xl shadow-xl">
                                     <h3 className="text-[14px] font-black text-white uppercase tracking-wider mb-1">Predictive Alpha Signals</h3>
@@ -1080,6 +1084,7 @@ export default function Home() {
                                 </div>
 
                                 {/* Market Intensity Gauge */}
+                            {/*
                                 <div className="bg-black border border-white/10 p-8 rounded-2xl shadow-xl flex flex-col items-center justify-center">
                                     <h3 className="text-[14px] font-black text-white uppercase tracking-wider self-start mb-1">Cluster Intensity</h3>
                                     <p className="text-[11px] text-white/30 self-start mb-8 font-bold italic uppercase">Whale density index</p>
@@ -1096,7 +1101,7 @@ export default function Home() {
                                                     <span className="text-[11px] font-black text-white">{c.val}</span>
                                                 </div>
                                                 <div className="h-1.5 w-full bg-white/5 rounded-full overflow-hidden">
-                                                    <div className="h-full bg-[#0075ff] transition-all duration-1000" style={{ width: `${(c.val / c.max) * 100}%` }} />
+                                                    <div className="h-full bg-[#0075ff]" style={{ width: `${(c.val / c.max) * 100}%` }} />
                                                 </div>
                                             </div>
                                         ))}
@@ -1107,6 +1112,7 @@ export default function Home() {
                                     </div>
                                 </div>
                             </div>
+                            */}
                         </div>
 
                         {/* Bottom Operational Grid */}
