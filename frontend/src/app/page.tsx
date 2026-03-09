@@ -93,8 +93,15 @@ export default function Home() {
     const [searchAddress, setSearchAddress] = useState("");
     const [sideFilter, setSideFilter] = useState<"ALL" | "BUY" | "SELL">("ALL");
     const [dragActive, setDragActive] = useState(false);
+    const [allocationWeights, setAllocationWeights] = useState<Record<string, string>>({});
     const lastCapitalResetAt = useRef<number>(0);
     const [isPageVisible, setIsPageVisible] = useState(true);
+
+    const handleUpdateAllocation = (address: string, weight: string) => {
+        setAllocationWeights(prev => ({ ...prev, [address]: weight }));
+        // In a real implementation, this would also call a backend API
+        console.log(`Updated allocation for ${address} to ${weight}%`);
+    };
 
     useEffect(() => {
         const handleVisibilityChange = () => setIsPageVisible(document.visibilityState === "visible");
@@ -1221,6 +1228,23 @@ export default function Home() {
                                                     )}
                                                     <div className="flex items-center gap-4">
                                                         <span className="text-[9px] font-black text-white/20 tracking-widest uppercase">Sequence {i + 1}</span>
+                                                        {!isTerminated && !isDisabled && (
+                                                            <>
+                                                                <span className="w-1 h-1 bg-white/10 rounded-full" />
+                                                                <div className="flex items-center gap-3 bg-white/5 px-3 py-1 rounded-lg">
+                                                                    <span className="text-[8px] font-black text-white/40 uppercase tracking-widest">Weight</span>
+                                                                    <input
+                                                                        type="range"
+                                                                        min="1"
+                                                                        max="100"
+                                                                        value={allocationWeights[addr] || "50"}
+                                                                        onChange={(e) => handleUpdateAllocation(addr, e.target.value)}
+                                                                        className="w-16 h-1 bg-white/10 rounded-full appearance-none cursor-pointer accent-[#0075ff]"
+                                                                    />
+                                                                    <span className="text-[10px] font-bold text-[#0075ff] w-6">{allocationWeights[addr] || "50"}%</span>
+                                                                </div>
+                                                            </>
+                                                        )}
                                                         <span className="w-1 h-1 bg-white/10 rounded-full" />
                                                         {isTerminated ? (
                                                             <span className="text-rose-500 text-[9px] font-black uppercase tracking-widest">Permanently Terminated</span>
