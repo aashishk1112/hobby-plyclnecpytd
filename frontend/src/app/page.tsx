@@ -736,7 +736,7 @@ export default function Home() {
                         { id: "REPLICATION", label: "Stream", icon: <Icons.Matrix />, protected: true },
                         /* Phase 2-5 items hidden for Phase 1 release */
                         { id: "STRATEGY", label: "Intel Engine", icon: <Icons.Strategy />, protected: true },
-                        // { id: "SOCIAL", label: "Social Matrix", icon: <Icons.Messages />, protected: true },
+                        { id: "SOCIAL", label: "Social Matrix", icon: <Icons.Messages />, protected: true },
                         // { id: "SUBSCRIPTION", label: "Subscription", icon: <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round"><path d="M12 2v20M17 5H9.5a3.5 3.5 0 000 7h5a3.5 3.5 0 010 7H6" /></svg>, protected: true },
                         { id: "SETTINGS", label: "Settings", icon: <Icons.Settings />, protected: true }
                     ].map((tab) => (
@@ -1512,6 +1512,107 @@ export default function Home() {
                                     )}
                                 </div>
                             </section>
+                        </div>
+                    </div>
+                )}
+
+                {activeTab === "SOCIAL" && (
+                    <div className="animate-in fade-in zoom-in-95 duration-500">
+                        <div className="max-w-7xl mx-auto">
+                            <div className="flex flex-col md:flex-row md:items-center justify-between gap-8 mb-16">
+                                <div>
+                                    <h1 className="text-[42px] font-black uppercase tracking-tighter leading-none mb-3 italic">Social Matrix Engine</h1>
+                                    <p className="text-white/30 text-[13px] font-bold tracking-[0.4em] uppercase italic flex items-center gap-3">
+                                        Real-time Collaborative Alpha Stream
+                                        <span className="flex items-center gap-2 px-3 py-1 rounded bg-[#0075ff]/10 border border-[#0075ff]/20 text-[10px] font-black text-[#0075ff] uppercase tracking-widest">
+                                            <span className="w-2 h-2 rounded-full bg-[#0075ff] animate-pulse" /> Live Grid
+                                        </span>
+                                    </p>
+                                </div>
+                                <div className="flex items-center gap-3 px-4 py-2 bg-[#0075ff]/10 border border-[#0075ff]/20 rounded-full">
+                                    <span className="w-2 h-2 rounded-full bg-[#0075ff] animate-pulse" />
+                                    <span className="text-[10px] font-black text-[#0075ff] uppercase tracking-widest">Tracking 124 Nodes</span>
+                                </div>
+                            </div>
+
+                            <div className="overflow-x-auto">
+                                <table className="w-full border-collapse">
+                                    <thead>
+                                        <tr className="border-b border-white/5 bg-white/[0.01]">
+                                            <th className="px-8 py-5 text-left text-[10px] font-black text-white/30 uppercase tracking-[0.2em] w-20">Rank</th>
+                                            <th className="px-8 py-5 text-left text-[10px] font-black text-white/30 uppercase tracking-[0.2em] w-24">Profile</th>
+                                            <th className="px-8 py-5 text-left text-[10px] font-black text-white/30 uppercase tracking-[0.2em]">Nodal Identity</th>
+                                            <th className="px-8 py-5 text-right text-[10px] font-black text-white/30 uppercase tracking-[0.2em]">Total PNL</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody className="divide-y divide-white/[0.03]">
+                                        {leaderboard.map((trader, i) => (
+                                            <tr
+                                                key={trader.proxyWallet || i}
+                                                onClick={() => window.open(`https://polymarket.com/profile/${trader.proxyWallet}`, '_blank')}
+                                                className="group/row hover:bg-white/[0.04] transition-all cursor-pointer relative"
+                                            >
+                                                <td className="px-8 py-7 text-center">
+                                                    <span className={`text-[20px] font-black italic tracking-tighter ${i < 3 ? 'text-[#0075ff]' : 'text-white/20'}`}>
+                                                        #{trader.rank}
+                                                    </span>
+                                                </td>
+                                                <td className="px-8 py-7">
+                                                    <div className="w-14 h-14 rounded-2xl bg-gradient-to-br from-white/20 to-transparent p-[1px] shadow-xl group-hover/row:scale-105 transition-transform duration-500 relative overflow-hidden">
+                                                        <div className="w-full h-full rounded-2xl bg-[#0b0e1f] flex items-center justify-center overflow-hidden">
+                                                            {trader.profile_image ? (
+                                                                <img
+                                                                    src={trader.profile_image}
+                                                                    className="w-full h-full object-cover group-hover/row:scale-110 transition-transform duration-700"
+                                                                    alt="profile"
+                                                                />
+                                                            ) : (
+                                                                <div
+                                                                    className="w-full h-full"
+                                                                    style={{
+                                                                        background: (() => {
+                                                                            const seed = trader.proxyWallet || trader.userName || "default";
+                                                                            let hash = 0;
+                                                                            for (let j = 0; j < seed.length; j++) {
+                                                                                hash = seed.charCodeAt(j) + ((hash << 5) - hash);
+                                                                            }
+                                                                            const colors = [
+                                                                                `hsl(${Math.abs(hash % 360)}, 70%, 50%)`,
+                                                                                `hsl(${Math.abs((hash * 13) % 360)}, 60%, 40%)`,
+                                                                                `hsl(${Math.abs((hash * 7) % 360)}, 80%, 60%)`
+                                                                            ];
+                                                                            return `radial-gradient(at 66% 77%, ${colors[0]} 0px, transparent 50%), radial-gradient(at 29% 97%, ${colors[1]} 0px, transparent 50%), radial-gradient(at 9% 29%, ${colors[2]} 0px, transparent 50%), #0b0e1f`;
+                                                                        })()
+                                                                    }}
+                                                                />
+                                                            )}
+                                                        </div>
+                                                        <div className="absolute inset-0 bg-gradient-to-t from-[#0b0e1f]/40 to-transparent opacity-0 group-hover/row:opacity-100 transition-opacity" />
+                                                    </div>
+                                                </td>
+                                                <td className="px-8 py-7">
+                                                    <div>
+                                                        <div className="text-[16px] font-bold text-white group-hover/row:text-[#0075ff] transition-colors leading-none mb-1.5 tracking-tight">
+                                                            {trader.userName || "Institutional Node"}
+                                                        </div>
+                                                        <div className="text-[10px] text-white/30 font-mono tracking-wider">
+                                                            {trader.proxyWallet?.slice(0, 10)}...{trader.proxyWallet?.slice(-8)}
+                                                        </div>
+                                                    </div>
+                                                </td>
+                                                <td className="px-8 py-7 text-right">
+                                                    <div className="flex flex-col items-end">
+                                                        <span className="text-[22px] font-black text-[#01b574] tracking-tight mb-0.5">
+                                                            +${parseFloat(trader.pnl).toLocaleString()}
+                                                        </span>
+                                                        <span className="text-[8px] font-black text-[#01b574]/40 uppercase tracking-[0.2em]">Institutional PNL</span>
+                                                    </div>
+                                                </td>
+                                            </tr>
+                                        ))}
+                                    </tbody>
+                                </table>
+                            </div>
                         </div>
                     </div>
                 )}
