@@ -1410,6 +1410,7 @@ export default function Home() {
                         </div>
                     </div >
                 )}
+                {/* Phase 3 features hidden in Phase 1 release */}
                 {activeTab === "STRATEGY" && (
                     <div className="animate-in fade-in zoom-in-95 duration-500 max-w-6xl mx-auto">
                         <div className="text-center mb-16">
@@ -1417,7 +1418,6 @@ export default function Home() {
                             <p className="text-white/30 text-[12px] font-bold tracking-[0.3em] uppercase italic">AI Portfolio & Logic Constraints</p>
                         </div>
 
-                        {/* AI Portfolio Builder Section */}
                         <div className="mb-12 bg-[#0075ff]/5 border border-[#0075ff]/20 rounded-3xl p-10 relative overflow-hidden">
                             <div className="absolute top-0 right-0 p-10 opacity-10">
                                 <Icons.Strategy />
