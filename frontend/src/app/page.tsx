@@ -735,7 +735,7 @@ export default function Home() {
                         { id: "FLEET", label: "Node Matrix", icon: <Icons.Fleet />, protected: true },
                         { id: "REPLICATION", label: "Stream", icon: <Icons.Matrix />, protected: true },
                         /* Phase 2-5 items hidden for Phase 1 release */
-                        // { id: "STRATEGY", label: "Intel Engine", icon: <Icons.Strategy />, protected: true },
+                        { id: "STRATEGY", label: "Intel Engine", icon: <Icons.Strategy />, protected: true },
                         // { id: "SOCIAL", label: "Social Matrix", icon: <Icons.Messages />, protected: true },
                         // { id: "SUBSCRIPTION", label: "Subscription", icon: <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round"><path d="M12 2v20M17 5H9.5a3.5 3.5 0 000 7h5a3.5 3.5 0 010 7H6" /></svg>, protected: true },
                         { id: "SETTINGS", label: "Settings", icon: <Icons.Settings />, protected: true }
