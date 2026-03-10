@@ -21,8 +21,8 @@ if (awsConfig.USER_POOL_ID && !isMockAuth) {
             oauth: {
                 domain: (process.env.NEXT_PUBLIC_COGNITO_DOMAIN || "us-east-1jkqtjhrlo.auth.us-east-1.amazoncognito.com").replace(/^https?:\/\//, ""),
                 scope: ["email", "profile", "openid"],
-                redirectSignIn: (typeof window !== 'undefined' ? window.location.origin : "https://app.scalarplanck.com") + "/",
-                redirectSignOut: (typeof window !== 'undefined' ? window.location.origin : "https://app.scalarplanck.com") + "/",
+                redirectSignIn: (typeof window !== 'undefined' ? window.location.origin : "https://app.whalesync.com") + "/",
+                redirectSignOut: (typeof window !== 'undefined' ? window.location.origin : "https://app.whalesync.com") + "/",
                 responseType: "code"
             }
         }
@@ -112,7 +112,7 @@ export default function Home() {
                 const currentUser = await Auth.currentAuthenticatedUser();
                 const session = await Auth.currentSession();
                 const token = session.getAccessToken().getJwtToken();
-                localStorage.setItem("scalar_token", token);
+                localStorage.setItem("whalesync_token", token);
 
                 setIsAuthenticated(true);
                 setUser({
@@ -126,14 +126,14 @@ export default function Home() {
                     console.log("No active AWS session - cleaning up sensitive data");
                     setIsAuthenticated(false);
                     setUser(null);
-                    localStorage.removeItem("scalar_token");
-                    localStorage.removeItem("scalar_user");
+                    localStorage.removeItem("whalesync_token");
+                    localStorage.removeItem("whalesync_user");
                     return;
                 }
 
                 console.log("Checking local mock fallback");
-                const mockToken = localStorage.getItem("scalar_token");
-                const mockUserStr = localStorage.getItem("scalar_user");
+                const mockToken = localStorage.getItem("whalesync_token");
+                const mockUserStr = localStorage.getItem("whalesync_user");
 
                 if (mockToken && mockUserStr && mockToken.startsWith("mock-")) {
                     const mockUser = JSON.parse(mockUserStr);
@@ -142,8 +142,8 @@ export default function Home() {
                 } else {
                     setIsAuthenticated(false);
                     setUser(null);
-                    localStorage.removeItem("scalar_token");
-                    localStorage.removeItem("scalar_user");
+                    localStorage.removeItem("whalesync_token");
+                    localStorage.removeItem("whalesync_user");
                 }
             } finally {
                 setIsAuthenticating(false);
@@ -161,7 +161,7 @@ export default function Home() {
                 case "signOut":
                     setIsAuthenticated(false);
                     setUser(null);
-                    localStorage.removeItem("scalar_token");
+                    localStorage.removeItem("whalesync_token");
                     setActiveTab("IDENTITY");
                     break;
             }
@@ -169,7 +169,7 @@ export default function Home() {
 
         if (isAuthenticated && isPageVisible) {
             fetchConfig();
-            fetchAvailableCategories();
+            // fetchAvailableCategories(); // Disabled for Phase 1
             fetchLeaderboard();
 
             const configInterval = setInterval(fetchConfig, 10000);
@@ -217,7 +217,7 @@ export default function Home() {
     const stripePromise = loadStripe(process.env.NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY || "");
 
     const getAuthHeaders = () => ({
-        "Authorization": `Bearer ${localStorage.getItem("scalar_token") || "mock-token"}`,
+        "Authorization": `Bearer ${localStorage.getItem("whalesync_token") || "mock-token"}`,
         "Content-Type": "application/json",
     });
 
@@ -284,7 +284,7 @@ export default function Home() {
             } else if (res.status === 401) {
                 setIsAuthenticated(false);
                 setUser(null);
-                localStorage.removeItem("scalar_token");
+                localStorage.removeItem("whalesync_token");
                 setActiveTab("IDENTITY");
             }
         } catch (error) { console.error("Failed to fetch config:", error); }
@@ -301,7 +301,7 @@ export default function Home() {
             } else if (res.status === 401) {
                 setIsAuthenticated(false);
                 setUser(null);
-                localStorage.removeItem("scalar_token");
+                localStorage.removeItem("whalesync_token");
                 setActiveTab("IDENTITY");
             }
         } catch (error) { console.error("Failed to fetch profile:", error); }
@@ -316,7 +316,7 @@ export default function Home() {
             } else if (res.status === 401) {
                 setIsAuthenticated(false);
                 setUser(null);
-                localStorage.removeItem("scalar_token");
+                localStorage.removeItem("whalesync_token");
                 setActiveTab("IDENTITY");
             }
         } catch (error) { console.error("Failed to fetch trades:", error); }
@@ -341,12 +341,13 @@ export default function Home() {
             } else if (res.status === 401) {
                 setIsAuthenticated(false);
                 setUser(null);
-                localStorage.removeItem("scalar_token");
+                localStorage.removeItem("whalesync_token");
                 setActiveTab("IDENTITY");
             }
         } catch (error) { console.error("Failed to fetch available categories:", error); }
     };
 
+    /* Disabled for Phase 1: Heavy intelligence/AI features and WebSocket
     useEffect(() => {
         if (!isAuthenticated) return;
         const fetchWhales = async () => {
@@ -428,6 +429,7 @@ export default function Home() {
             ws.close();
         };
     }, [isAuthenticated, API_BASE]);
+    */
 
     const addWallet = async () => {
         if (!newWallet) return;
@@ -445,7 +447,7 @@ export default function Home() {
             } else if (res.status === 401) {
                 setIsAuthenticated(false);
                 setUser(null);
-                localStorage.removeItem("scalar_token");
+                localStorage.removeItem("whalesync_token");
                 setActiveTab("IDENTITY");
             } else if (res.status === 402) {
                 if (window.confirm("Address limit reached. Purchase an additional tracking slot for $5?")) {
@@ -493,7 +495,7 @@ export default function Home() {
             } else if (res.status === 401) {
                 setIsAuthenticated(false);
                 setUser(null);
-                localStorage.removeItem("scalar_token");
+                localStorage.removeItem("whalesync_token");
                 setActiveTab("IDENTITY");
             }
         } catch (error) { console.error("Failed to terminate wallet:", error); }
@@ -511,7 +513,7 @@ export default function Home() {
             } else if (res.status === 401) {
                 setIsAuthenticated(false);
                 setUser(null);
-                localStorage.removeItem("scalar_token");
+                localStorage.removeItem("whalesync_token");
                 setActiveTab("IDENTITY");
             }
         } catch (error) { console.error("Failed to add filter:", error); }
@@ -530,7 +532,7 @@ export default function Home() {
             } else if (res.status === 401) {
                 setIsAuthenticated(false);
                 setUser(null);
-                localStorage.removeItem("scalar_token");
+                localStorage.removeItem("whalesync_token");
                 setActiveTab("IDENTITY");
             }
         } catch (error) { console.error("Failed to update filter:", error); }
@@ -545,7 +547,7 @@ export default function Home() {
             } else if (res.status === 401) {
                 setIsAuthenticated(false);
                 setUser(null);
-                localStorage.removeItem("scalar_token");
+                localStorage.removeItem("whalesync_token");
                 setActiveTab("IDENTITY");
             }
         } catch (error) { console.error("Failed to remove filter:", error); }
@@ -560,7 +562,7 @@ export default function Home() {
             } else if (res.status === 401) {
                 setIsAuthenticated(false);
                 setUser(null);
-                localStorage.removeItem("scalar_token");
+                localStorage.removeItem("whalesync_token");
                 setActiveTab("IDENTITY");
             }
         } catch (error) { console.error("Failed to toggle wallet tracking:", error); }
@@ -598,7 +600,7 @@ export default function Home() {
             } else if (res.status === 401) {
                 setIsAuthenticated(false);
                 setUser(null);
-                localStorage.removeItem("scalar_token");
+                localStorage.removeItem("whalesync_token");
                 localStorage.removeItem("scalar_user");
                 setActiveTab("IDENTITY");
             }
@@ -646,7 +648,7 @@ export default function Home() {
         console.log("Initiating logout...");
         setIsAuthenticated(false);
         setUser(null);
-        localStorage.removeItem("scalar_token");
+        localStorage.removeItem("whalesync_token");
         localStorage.removeItem("scalar_user");
         setActiveTab("IDENTITY");
 
@@ -696,7 +698,7 @@ export default function Home() {
                     };
                     setIsAuthenticated(true);
                     setUser(mockUser);
-                    localStorage.setItem("scalar_token", data.access_token);
+                    localStorage.setItem("whalesync_token", data.access_token);
                     localStorage.setItem("scalar_user", JSON.stringify(mockUser));
                     setActiveTab("OVERVIEW");
                 }
@@ -728,7 +730,7 @@ export default function Home() {
                         <svg width="22" height="22" viewBox="0 0 24 24" fill="none"><path d="M12 4L4 12L12 20L20 12L12 4Z" stroke="black" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" /></svg>
                     </div>
                     <div>
-                        <span className="text-[18px] font-black tracking-tight block leading-none">Pclonecopy</span>
+                        <span className="text-[18px] font-black tracking-tight block leading-none">WhaleSync</span>
                         <span className="text-[9px] font-black uppercase text-white/30 tracking-[0.2em] mt-1 block">Institutional</span>
                     </div>
                 </div>
@@ -785,7 +787,7 @@ export default function Home() {
             <header className="fixed top-0 right-0 left-[260px] h-20 bg-[#060b26]/50 backdrop-blur-md border-b border-white/5 flex items-center justify-between px-10 z-40">
                 <div className="flex items-center gap-4">
                     <div className="flex items-center gap-2 text-white/40 text-[12px] font-bold">
-                        <span>Pclonecopy</span>
+                        <span>WhaleSync</span>
                         <span>/</span>
                         <span className="text-white uppercase tracking-widest">{activeTab}</span>
                     </div>
@@ -1255,7 +1257,7 @@ export default function Home() {
                                             </div>
                                             <div className="flex items-center gap-4 shrink-0 pl-4">
                                                 <div className="hidden sm:flex flex-col items-end mr-4">
-                                                    <p className="text-[9px] font-black text-white/10 uppercase tracking-widest">Protocol</p>
+                                                    <p className="text-[9px] font-black text-white/10 uppercase tracking-widest">WhaleSync</p>
                                                     <p className="text-[10px] font-black text-white/40 uppercase">v2.4.0</p>
                                                 </div>
                                                 {!isTerminated && (
