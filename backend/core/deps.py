@@ -10,10 +10,10 @@ USER_POOL_ID = get_config("USER_POOL_ID")
 REGION = get_config("AWS_REGION", "ap-south-1")
 LOCALSTACK_ENDPOINT = get_config("LOCALSTACK_ENDPOINT")
 
-if USER_POOL_ID and not USER_POOL_ID.endswith("_dummy"):
+if USER_POOL_ID and not USER_POOL_ID.endswith("_dummy") and not USER_POOL_ID.endswith("_mock_id"):
     pool_region = USER_POOL_ID.split("_")[0] if "_" in USER_POOL_ID else REGION
     JWKS_URL = f"https://cognito-idp.{pool_region}.amazonaws.com/{USER_POOL_ID}/.well-known/jwks.json"
-elif LOCALSTACK_ENDPOINT and USER_POOL_ID:
+elif LOCALSTACK_ENDPOINT and USER_POOL_ID and get_config("IS_LOCAL", "false").lower() == "true":
     JWKS_URL = f"{LOCALSTACK_ENDPOINT}/{USER_POOL_ID}/.well-known/jwks.json"
 else:
     JWKS_URL = None
@@ -31,7 +31,7 @@ async def get_jwks():
                 _jwks_cache = resp.json()
                 return _jwks_cache
     except Exception as e:
-        logger.error(f"Failed to fetch JWKS: {e}")
+        logger.error(f"Failed to fetch JWKS from {JWKS_URL}: {e}")
     return None
 
 async def get_current_user(request: Request):
@@ -40,27 +40,35 @@ async def get_current_user(request: Request):
     
     if not auth_header or not auth_header.startswith("Bearer "):
         if is_mock: return "local-test-user"
-        raise HTTPException(status_code=401, detail="Unauthorized")
+        raise HTTPException(status_code=401, detail="Unauthorized: No Bearer token provided")
     
     token = auth_header.split(" ")[1]
     
+    # Production Logic: Real Cognito JWT Validation
     if USER_POOL_ID and not is_mock:
         try:
             jwks = await get_jwks()
             if not jwks:
+                logger.error("Identity provider configuration error: JWKS URL is missing or unreachable")
                 raise HTTPException(status_code=500, detail="Identity provider configuration error")
             
+            # Real validation using RS256
             payload = jwt.decode(token, jwks, algorithms=['RS256'], options={"verify_at_hash": False, "verify_aud": False})
-            return payload.get("sub")
+            user_id = payload.get("sub") or payload.get("username")
+            if not user_id:
+                raise HTTPException(status_code=401, detail="Invalid token: No subject claim found")
+            return user_id
         except Exception as e:
-            logger.error(f"JWT Verification failed: {e}")
-            raise HTTPException(status_code=401, detail="Invalid token")
+            logger.error(f"Production JWT Verification failed: {e}")
+            raise HTTPException(status_code=401, detail=f"Invalid token: {str(e)}")
+    
+    # Fallback Logic: Mocking or Dev Testing
     else:
         try:
-            token = auth_header.split(" ")[1]
             if is_mock and token.startswith("mock-token-"):
                 return f"user-{token.replace('mock-token-', '')}"
             
+            # Unverified claims for quick dev check without JWKS
             payload = jwt.get_unverified_claims(token)
             user_id = payload.get("sub") or payload.get("username")
             if not user_id and is_mock: return f"user-{token}"

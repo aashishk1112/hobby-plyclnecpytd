@@ -7,6 +7,7 @@ from backend.api import intelligence, trading, billing, auth, ai, social
 from backend.core.ws import manager
 from backend.services.alpha_stream_service import alpha_stream_service
 import asyncio
+from mangum import Mangum
 
 # Setup Logging
 logging.basicConfig(level=get_config("LOG_LEVEL", "INFO"))
@@ -22,7 +23,9 @@ app.add_middleware(
         "http://localhost:3001",
         "http://127.0.0.1:3000",
         "http://127.0.0.1:3001",
-        get_config("FRONTEND_URL", "http://localhost:3000")
+        "https://app.scalarplanck.com",
+        "https://scalarplanck.com",
+        get_config("FRONTEND_URL", "https://app.scalarplanck.com")
     ],
     allow_credentials=True,
     allow_methods=["*"],
@@ -36,6 +39,8 @@ app.include_router(trading.router)
 app.include_router(billing.router)
 app.include_router(ai.router)
 app.include_router(social.router)
+
+handler = Mangum(app)
 
 @app.on_event("startup")
 async def startup_event():

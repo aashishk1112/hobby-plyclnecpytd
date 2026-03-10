@@ -1,0 +1,10 @@
+node_modules
+frontend
+backend/venv
+.git
+.next
+out
+*.log
+.gemini
+brain
+tmp

@@ -9,7 +9,9 @@ import { loadStripe } from "@stripe/stripe-js";
 // In a real build process, these would be env vars
 import awsConfig from "../../.aws_config.json";
 
-if (awsConfig.USER_POOL_ID) {
+const isMockAuth = process.env.NEXT_PUBLIC_MOCK_AUTH === "true";
+
+if (awsConfig.USER_POOL_ID && !isMockAuth) {
     Amplify.configure({
         Auth: {
             region: awsConfig.REGION,
@@ -19,14 +21,14 @@ if (awsConfig.USER_POOL_ID) {
             oauth: {
                 domain: (process.env.NEXT_PUBLIC_COGNITO_DOMAIN || "us-east-1jkqtjhrlo.auth.us-east-1.amazoncognito.com").replace(/^https?:\/\//, ""),
                 scope: ["email", "profile", "openid"],
-                redirectSignIn: (typeof window !== 'undefined' ? window.location.origin : "http://localhost:3001") + "/",
-                redirectSignOut: (typeof window !== 'undefined' ? window.location.origin : "http://localhost:3001") + "/",
+                redirectSignIn: (typeof window !== 'undefined' ? window.location.origin : "https://app.scalarplanck.com") + "/",
+                redirectSignOut: (typeof window !== 'undefined' ? window.location.origin : "https://app.scalarplanck.com") + "/",
                 responseType: "code"
             }
         }
     });
 } else {
-    // Dummy config to prevent Amplify from throwing errors in Local dev
+    // Local Dev / Mock Mode
     Amplify.configure({
         Auth: {
             region: "us-east-1",
@@ -105,7 +107,7 @@ export default function Home() {
     useEffect(() => {
         const checkUser = async () => {
             try {
-                if (!awsConfig.USER_POOL_ID) throw new Error("Mock Mode");
+                if (!awsConfig.USER_POOL_ID || isMockAuth) throw new Error("Mock Mode");
 
                 const currentUser = await Auth.currentAuthenticatedUser();
                 const session = await Auth.currentSession();
@@ -120,7 +122,16 @@ export default function Home() {
                 });
                 setActiveTab("OVERVIEW");
             } catch (err) {
-                console.log("No active AWS session - checking local mock");
+                if (!isMockAuth && awsConfig.USER_POOL_ID) {
+                    console.log("No active AWS session - cleaning up sensitive data");
+                    setIsAuthenticated(false);
+                    setUser(null);
+                    localStorage.removeItem("scalar_token");
+                    localStorage.removeItem("scalar_user");
+                    return;
+                }
+
+                console.log("Checking local mock fallback");
                 const mockToken = localStorage.getItem("scalar_token");
                 const mockUserStr = localStorage.getItem("scalar_user");
 
@@ -381,7 +392,8 @@ export default function Home() {
         };
 
         // Real-time WebSocket logic
-        const wsUrl = `ws://${new URL(API_BASE).host}/ws/${user?.username || 'anon'}`;
+        const protocol = API_BASE.startsWith('https') ? 'wss' : 'ws';
+        const wsUrl = `${protocol}://${new URL(API_BASE).host}/ws/${user?.username || 'anon'}`;
         const ws = new WebSocket(wsUrl);
 
         ws.onopen = () => console.info("WebSocket Tunnel Active");
@@ -556,14 +568,15 @@ export default function Home() {
 
     const updateConfigSettings = async (params: { initial_balance?: number, balance_threshold?: number, daily_pnl_threshold?: number, trading_mode?: string, polymarket_address?: string }) => {
         try {
-            let url = `${API_BASE}/config/update?`;
-            if (params.initial_balance !== undefined) url += `initial_balance=${params.initial_balance}&`;
-            if (params.balance_threshold !== undefined) url += `balance_threshold=${params.balance_threshold}&`;
-            if (params.daily_pnl_threshold !== undefined) url += `daily_pnl_threshold=${params.daily_pnl_threshold}&`;
-            if (params.trading_mode !== undefined) url += `trading_mode=${params.trading_mode}&`;
-            if (params.polymarket_address !== undefined) url += `polymarket_address=${params.polymarket_address}`;
-
-            const res = await fetch(url, fetchOptions("POST"));
+            const url = `${API_BASE}/trading/config/update`;
+            const res = await fetch(url, {
+                ...fetchOptions("POST"),
+                headers: {
+                    ...fetchOptions("POST").headers,
+                    "Content-Type": "application/json"
+                },
+                body: JSON.stringify(params)
+            });
             if (res.ok) {
                 const data = await res.json();
                 if (params.initial_balance !== undefined) {
@@ -693,8 +706,7 @@ export default function Home() {
         };
 
         // Use mock login if explicitly enabled or if real config is missing
-        const isMockEnabled = process.env.NEXT_PUBLIC_MOCK_AUTH === "true";
-        if (isMockEnabled || !awsConfig.USER_POOL_ID || !awsConfig.USER_POOL_CLIENT_ID || awsConfig.USER_POOL_ID.includes("dummy")) {
+        if (isMockAuth || !awsConfig.USER_POOL_ID || !awsConfig.USER_POOL_CLIENT_ID || awsConfig.USER_POOL_ID.includes("dummy")) {
             fallbackMockLogin();
             return;
         }
@@ -1506,8 +1518,8 @@ export default function Home() {
                         </div>
 
                         <div className="bg-black border border-white/10 p-10 rounded-xl shadow-2xl space-y-12">
-                            {/* Section 1: Execution Algorithm */}
-                            <div className="space-y-8">
+                            {/* Section 1: Execution Algorithm (Hidden for Phase 1) */}
+                            {/* <div className="space-y-8">
                                 <h3 className="text-[14px] font-black uppercase text-white/60 tracking-[0.2em] border-b border-white/5 pb-2">Execution Algorithm</h3>
                                 <div className="space-y-4">
                                     <label className="block text-[11px] font-black uppercase text-white/40 tracking-widest">Execution Threshold (Min Balance)</label>
@@ -1531,33 +1543,35 @@ export default function Home() {
                                     </div>
                                     <p className="text-[10px] text-white/20 font-bold italic uppercase tracking-wider">Engine will skip all trade replication if balance falls below this amount.</p>
                                 </div>
+                            </div> */}
 
-                                <div className="space-y-4">
-                                    <label className="block text-[11px] font-black uppercase text-white/40 tracking-widest">Paper Trading Initialization</label>
-                                    <div className="flex gap-4">
-                                        <div className="relative flex-1">
-                                            <span className="absolute left-6 top-1/2 -translate-y-1/2 text-white/40 font-bold">$</span>
-                                            <input
-                                                type="text"
-                                                value={initialBalanceInput}
-                                                onChange={(e) => setInitialBalanceInput(e.target.value)}
-                                                className="w-full bg-white/5 border border-white/10 rounded-xl pl-12 pr-6 py-5 text-[16px] font-black outline-none focus:border-white focus:bg-white/10 transition-all text-white placeholder:text-white/10"
-                                                placeholder="100.00"
-                                            />
-                                        </div>
-                                        <button
-                                            onClick={handleUpdateInitialBalance}
-                                            className="px-8 bg-white text-black rounded-xl font-black text-[11px] uppercase tracking-widest transition-all hover:bg-white/90 active:scale-95 whitespace-nowrap"
-                                        >
-                                            Apply Capital
-                                        </button>
+                            <div className="space-y-8">
+                                <label className="block text-[11px] font-black uppercase text-white/40 tracking-widest">Paper Trading Initialization</label>
+                                <div className="flex gap-4">
+                                    <div className="relative flex-1">
+                                        <span className="absolute left-6 top-1/2 -translate-y-1/2 text-white/40 font-bold">$</span>
+                                        <input
+                                            type="text"
+                                            value={initialBalanceInput}
+                                            onChange={(e) => setInitialBalanceInput(e.target.value)}
+                                            className="w-full bg-white/5 border border-white/10 rounded-xl pl-12 pr-6 py-5 text-[16px] font-black outline-none focus:border-white focus:bg-white/10 transition-all text-white placeholder:text-white/10"
+                                            placeholder="100.00"
+                                        />
                                     </div>
-                                    <p className="text-[10px] text-white/20 font-bold italic uppercase tracking-wider">Initial simulation balance used for performance delta calculations.</p>
+                                    <button
+                                        onClick={handleUpdateInitialBalance}
+                                        className="px-8 bg-white text-black rounded-xl font-black text-[11px] uppercase tracking-widest transition-all hover:bg-white/90 active:scale-95 whitespace-nowrap"
+                                    >
+                                        Apply Capital
+                                    </button>
                                 </div>
+                                <p className="text-[10px] text-white/20 font-bold italic uppercase tracking-wider">Initial simulation balance used for performance delta calculations.</p>
                             </div>
+                            {/* Removed extra closing div to fix JSX structure */}
 
-                            {/* Section 2: Market Intelligence */}
-                            <div className="space-y-8 pt-8 border-t border-white/5">
+
+                            {/* Section 2: Market Intelligence (Hidden for Phase 1) */}
+                            {/* <div className="space-y-8 pt-8 border-t border-white/5">
                                 <h3 className="text-[14px] font-black uppercase text-white/60 tracking-[0.2em] border-b border-white/5 pb-2">Market Intelligence</h3>
                                 <div className="space-y-4">
                                     <label className="block text-[11px] font-black uppercase text-white/40 tracking-widest">Alpha P&L Threshold (Daily)</label>
@@ -1581,17 +1595,17 @@ export default function Home() {
                                     </div>
                                     <p className="text-[10px] text-white/20 font-bold italic uppercase tracking-wider">Only traders with a daily P&L above this amount will appear in your dashboard Intel.</p>
                                 </div>
-                            </div>
+                            </div> */}
 
-                            {/* Section 3: Trading Configuration */}
-                            <div className="space-y-8 pt-8 border-t border-white/5">
+                            {/* Section 3: Trading Configuration (Hidden for Phase 1) */}
+                            {/* <div className="space-y-8 pt-8 border-t border-white/5">
                                 <h3 className="text-[14px] font-black uppercase text-white/60 tracking-[0.2em] border-b border-white/5 pb-2">Trading Configuration</h3>
                                 <div className="grid grid-cols-2 gap-4">
                                     <button
                                         onClick={() => handleUpdateTradingMode("paper")}
                                         className={`flex flex-col items-center justify-center p-6 rounded-2xl border transition-all ${tradingMode === "paper" ? "bg-[#0075ff]/10 border-[#0075ff] shadow-[0_0_20px_rgba(0,117,255,0.2)]" : "bg-white/5 border-white/10 hover:border-white/20"}`}
                                     >
-                                        <span className="text-2xl mb-2">📄</span>
+                                        <div className="text-[#0075ff] mb-2"><Icons.Matrix /></div>
                                         <span className="text-[11px] font-black uppercase tracking-widest text-white">Paper Trading</span>
                                         <span className="text-[9px] text-white/40 font-bold mt-1 uppercase italic">Simulated Execution</span>
                                     </button>
@@ -1599,7 +1613,7 @@ export default function Home() {
                                         onClick={() => handleUpdateTradingMode("live")}
                                         className={`flex flex-col items-center justify-center p-6 rounded-2xl border transition-all ${tradingMode === "live" ? "bg-[#01b574]/10 border-[#01b574] shadow-[0_0_20px_rgba(1,181,116,0.2)]" : "bg-white/5 border-white/10 hover:border-white/20"}`}
                                     >
-                                        <span className="text-2xl mb-2">⚡</span>
+                                        <div className="text-[#01b574] mb-2"><Icons.Fleet /></div>
                                         <span className="text-[11px] font-black uppercase tracking-widest text-white">Live Trading</span>
                                         <span className="text-[9px] text-white/40 font-bold mt-1 uppercase italic">Institutional Rails</span>
                                     </button>
@@ -1624,7 +1638,7 @@ export default function Home() {
                                         </div>
                                     </div>
                                 )}
-                            </div>
+                            </div> */}
                         </div>
                     </div>
                 )

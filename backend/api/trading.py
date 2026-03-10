@@ -16,12 +16,36 @@ async def get_trading_config(user_id: str = Depends(get_current_user)):
 @router.post("/config/update")
 async def update_trading_config(
     request: Request,
-    user_id: str = Depends(get_current_user),
-    config_update: Dict = {}
+    user_id: str = Depends(get_current_user)
 ):
+    try:
+        config_update = await request.json()
+    except:
+        config_update = {}
+        
     data = get_user_data(user_id)
-    # Update logic here...
-    return {"status": "success", "config": data}
+    
+    # Update fields if provided
+    if "initial_balance" in config_update:
+        new_val = float(config_update["initial_balance"])
+        data["initialBalance"] = new_val
+        data["balance"] = new_val # Reset current balance to match initial
+        clear_user_trades(user_id) # Clear history as promised in UI
+        
+    if "balance_threshold" in config_update:
+        data["balanceThreshold"] = float(config_update["balance_threshold"])
+        
+    if "daily_pnl_threshold" in config_update:
+        data["dailyPnlThreshold"] = float(config_update["daily_pnl_threshold"])
+        
+    if "trading_mode" in config_update:
+        data["tradingMode"] = config_update["trading_mode"]
+        
+    if "polymarket_address" in config_update:
+        data["polymarketAddress"] = config_update["polymarket_address"]
+
+    update_user_data(user_id, data)
+    return {"status": "success", "config": data, "stats": {"balance": data.get("balance"), "initial_balance": data.get("initialBalance")}}
 
 @router.post("/wallets/add")
 async def add_wallet_endpoint(address: str, user_id: str = Depends(get_current_user)):
