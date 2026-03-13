@@ -5,7 +5,7 @@ import "./globals.css";
 const inter = Inter({ subsets: ["latin"] });
 
 export const metadata: Metadata = {
-  title: "Polymarket Copy Trade Bot",
+  title: "Whale Sync",
   description: "Monitor and replicate successful traders on Polymarket",
 };
 
