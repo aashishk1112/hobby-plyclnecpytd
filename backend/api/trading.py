@@ -47,9 +47,39 @@ async def update_trading_config(
     update_user_data(user_id, data)
     return {"status": "success", "config": data, "stats": {"balance": data.get("balance"), "initial_balance": data.get("initialBalance")}}
 
-@router.post("/wallets/add")
-async def add_wallet_endpoint(address: str, user_id: str = Depends(get_current_user)):
-    result = add_wallet(user_id, address.lower())
-    if result == "duplicate":
-        raise HTTPException(status_code=400, detail="Address already tracked")
-    return {"status": "success", "result": result}
+@router.get("/trades", response_model=List)
+async def get_trades(user_id: str = Depends(get_current_user)):
+    from backend.db import get_user_trades
+    return get_user_trades(user_id)
+
+@router.post("/wallets/terminate")
+async def terminate_wallet_endpoint(address: str, user_id: str = Depends(get_current_user)):
+    from backend.db import terminate_wallet
+    if terminate_wallet(user_id, address.lower()):
+        data = get_user_data(user_id)
+        return {"status": "success", "wallets": data.get("trackedWallets"), "terminated_wallets": data.get("terminatedWallets")}
+    raise HTTPException(status_code=400, detail="Failed to terminate wallet")
+
+@router.post("/wallets/toggle")
+async def toggle_wallet_endpoint(address: str, user_id: str = Depends(get_current_user)):
+    from backend.db import toggle_wallet_tracking
+    if toggle_wallet_tracking(user_id, address.lower()):
+        data = get_user_data(user_id)
+        return {"status": "success", "disabled_wallets": data.get("disabledWallets")}
+    raise HTTPException(status_code=400, detail="Failed to toggle wallet")
+
+@router.post("/filters/add")
+async def add_filter_endpoint(category: str, user_id: str = Depends(get_current_user)):
+    from backend.db import add_filter
+    if add_filter(user_id, category):
+        data = get_user_data(user_id)
+        return {"status": "success", "filters": data.get("filters")}
+    raise HTTPException(status_code=400, detail="Failed to add filter")
+
+@router.post("/filters/remove")
+async def remove_filter_endpoint(category: str, user_id: str = Depends(get_current_user)):
+    from backend.db import remove_filter
+    if remove_filter(user_id, category):
+        data = get_user_data(user_id)
+        return {"status": "success", "filters": data.get("filters")}
+    raise HTTPException(status_code=400, detail="Failed to remove filter")

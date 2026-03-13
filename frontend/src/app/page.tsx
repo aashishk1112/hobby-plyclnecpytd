@@ -292,7 +292,7 @@ export default function Home() {
 
     const fetchProfile = async (address: string) => {
         try {
-            const res = await fetch(`${API_BASE}/profiles/${address}`, fetchOptions());
+            const res = await fetch(`${API_BASE}/social/profile/${address}`, fetchOptions());
             if (res.ok) {
                 const data = await res.json();
                 if (data.username || data.displayName) {
@@ -434,7 +434,7 @@ export default function Home() {
     const addWallet = async () => {
         if (!newWallet) return;
         try {
-            const res = await fetch(`${API_BASE}/wallets/add?address=${newWallet}`, fetchOptions("POST"));
+            const res = await fetch(`${API_BASE}/trading/wallets/add?address=${newWallet}`, fetchOptions("POST"));
             if (res.ok) {
                 const data = await res.json();
                 setWallets(data.wallets);
@@ -461,7 +461,7 @@ export default function Home() {
 
     const handleExtraSlotPurchase = async () => {
         try {
-            const res = await fetch(`${API_BASE}/stripe/create-checkout-session`, fetchOptions("POST"));
+            const res = await fetch(`${API_BASE}/billing/stripe/create-checkout-session`, fetchOptions("POST"));
             if (res.ok) {
                 const { url } = await res.json();
                 if (url) {
@@ -485,7 +485,7 @@ export default function Home() {
         if (!confirmed) return;
 
         try {
-            const res = await fetch(`${API_BASE}/wallets/terminate?address=${address}`, fetchOptions("POST"));
+            const res = await fetch(`${API_BASE}/trading/wallets/terminate?address=${address}`, fetchOptions("POST"));
             if (res.ok) {
                 const data = await res.json();
                 setWallets(data.wallets);
@@ -505,7 +505,7 @@ export default function Home() {
         const catToAdd = category || newFilter;
         if (!catToAdd) return;
         try {
-            const res = await fetch(`${API_BASE}/filters/add?category=${catToAdd}`, fetchOptions("POST"));
+            const res = await fetch(`${API_BASE}/trading/filters/add?category=${catToAdd}`, fetchOptions("POST"));
             if (res.ok) {
                 const data = await res.json();
                 setFilters(data.filters);
@@ -540,7 +540,7 @@ export default function Home() {
 
     const removeFilter = async (category: string) => {
         try {
-            const res = await fetch(`${API_BASE}/filters/remove?category=${category}`, fetchOptions("POST"));
+            const res = await fetch(`${API_BASE}/trading/filters/remove?category=${category}`, fetchOptions("POST"));
             if (res.ok) {
                 const data = await res.json();
                 setFilters(data.filters);
@@ -555,7 +555,7 @@ export default function Home() {
 
     const toggleWalletTracking = async (address: string) => {
         try {
-            const res = await fetch(`${API_BASE}/wallets/toggle?address=${address}`, fetchOptions("POST"));
+            const res = await fetch(`${API_BASE}/trading/wallets/toggle?address=${address}`, fetchOptions("POST"));
             if (res.ok) {
                 const data = await res.json();
                 setDisabledWallets(data.disabled_wallets);

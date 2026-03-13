@@ -224,6 +224,44 @@ def terminate_wallet(user_id: str, address: str):
         return update_user_data(user_id, data)
     return True
 
+def toggle_wallet_tracking(user_id: str, address: str):
+    """Toggle a wallet's enabled/disabled state for tracking."""
+    data = get_user_data(user_id)
+    if not data: return False
+    
+    disabled = data.get("disabledWallets", [])
+    if address in disabled:
+        disabled.remove(address)
+    else:
+        disabled.append(address)
+    
+    data["disabledWallets"] = disabled
+    return update_user_data(user_id, data)
+
+def add_filter(user_id: str, category: str):
+    """Add a category filter for a user."""
+    data = get_user_data(user_id)
+    if not data: return False
+    
+    filters = data.get("filters", [])
+    if category not in filters:
+        filters.append(category)
+        data["filters"] = filters
+        return update_user_data(user_id, data)
+    return True
+
+def remove_filter(user_id: str, category: str):
+    """Remove a category filter for a user."""
+    data = get_user_data(user_id)
+    if not data: return False
+    
+    filters = data.get("filters", [])
+    if category in filters:
+        filters.remove(category)
+        data["filters"] = filters
+        return update_user_data(user_id, data)
+    return True
+
 def save_trade(user_id: str, trade_data: dict):
     """Persist trade history item."""
     if IS_LOCAL:
