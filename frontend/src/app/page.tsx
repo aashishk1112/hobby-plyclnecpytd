@@ -170,14 +170,14 @@ export default function Home() {
         if (isAuthenticated && isPageVisible) {
             fetchConfig();
             // fetchAvailableCategories(); // Disabled for Phase 1
-            fetchLeaderboard();
+            // fetchLeaderboard(); // Disabled for Phase 1
 
             const configInterval = setInterval(fetchConfig, 10000);
-            const leaderboardInterval = setInterval(fetchLeaderboard, 30000); // Less frequent leaderboard updates
+            // const leaderboardInterval = setInterval(fetchLeaderboard, 30000); // Less frequent leaderboard updates
 
             return () => {
                 clearInterval(configInterval);
-                clearInterval(leaderboardInterval);
+                // clearInterval(leaderboardInterval);
                 unsubscribe();
             };
         }
@@ -595,7 +595,7 @@ export default function Home() {
                 }
                 fetchTrades();
                 fetchConfig();
-                if (params.daily_pnl_threshold !== undefined) fetchLeaderboard();
+                // if (params.daily_pnl_threshold !== undefined) fetchLeaderboard();
                 console.log("Configuration updated");
             } else if (res.status === 401) {
                 setIsAuthenticated(false);
