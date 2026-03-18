@@ -75,7 +75,39 @@ if [ "$POOL_ID" != "us-east-1_dummy" ]; then
         --region $REGION || echo "⚠️ Could not create Twitter IdP (expected in LocalStack Community)."
 fi
 
-# 4. Output Configuration
+# 4. Inject Unified Configuration into Secrets Manager
+echo "🔐 Seeding unified configuration into Secrets Manager (ScalarPlanckConfig)..."
+SECRET_JSON=$(cat <<EOF
+{
+  "POLY_API_KEY": "mock-poly-key",
+  "POLY_API_SECRET": "mock-poly-secret",
+  "POLY_API_PASSPHRASE": "mock-poly-passphrase",
+  "POLY_PRIVATE_KEY": "//0x0000000000000000000000000000000000000000000000000000000000000000",
+  "PAPER_TRADING": "True",
+  "LOG_LEVEL": "INFO",
+  "MOCK_AUTH": "false",
+  "GOOGLE_CLIENT_ID": "mock-google-id",
+  "GOOGLE_CLIENT_SECRET": "mock-google-secret",
+  "TWITTER_CLIENT_ID": "YOUR_TWITTER_CLIENT_ID",
+  "TWITTER_CLIENT_SECRET": "YOUR_TWITTER_CLIENT_SECRET",
+  "STRIPE_SECRET_KEY": "sk_test_mock",
+  "STRIPE_WEBHOOK_SECRET": "whsec_mock",
+  "FRONTEND_URL": "https://d3ukbv7x6b8vr.cloudfront.net",
+  "USER_POOL_ID": "$POOL_ID",
+  "USER_POOL_CLIENT_ID": "$CLIENT_ID",
+  "DYNAMODB_TABLE": "ScalarUsers",
+  "TRADES_TABLE": "ScalarTrades"
+}
+EOF
+)
+
+aws --endpoint-url=$ENDPOINT_URL secretsmanager create-secret \
+    --name ScalarPlanckConfig \
+    --description "Master Configuration for Scalar-Planck" \
+    --secret-string "$SECRET_JSON" \
+    --region $REGION || echo "⚠️ Secret ScalarPlanckConfig already exists or could not be created."
+
+# 5. Output Configuration
 CONFIG_JSON="{\"REGION\": \"$REGION\", \"USER_POOL_ID\": \"$POOL_ID\", \"USER_POOL_CLIENT_ID\": \"$CLIENT_ID\", \"DYNAMODB_TABLE\": \"ScalarUsers\"}"
 echo "$CONFIG_JSON" > /.aws_config.json
 # Write to the project root as well so frontend/backend can see it

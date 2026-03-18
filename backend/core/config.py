@@ -41,40 +41,8 @@ class ConfigLoader:
         return cls._instance
 
     def _load_config(self):
-        secret_name = os.getenv("AWS_SECRET_NAME", "ScalarPlanckConfig")
-        region_name = os.getenv("AWS_REGION", "ap-south-1")
-
-        # Start with environment variables as default
+        # The variables are already loaded into os.environ by dotenv from backend/.env
         self._config = {k: v for k, v in os.environ.items()}
-
-        # Attempt to load from Secrets Manager if not in mock mode
-        is_local = os.getenv("IS_LOCAL", "false").lower() == "true"
-        if os.getenv("MOCK_AUTH", "false").lower() == "false" or not is_local:
-            try:
-                session = boto3.session.Session()
-                client_kwargs = {
-                    "service_name": 'secretsmanager',
-                    "region_name": region_name
-                }
-                if is_local:
-                    client_kwargs["endpoint_url"] = "http://localhost:4566"
-                    client_kwargs["aws_access_key_id"] = "test"
-                    client_kwargs["aws_secret_access_key"] = "test"
-                
-                client = session.client(**client_kwargs)
-                get_secret_value_response = client.get_secret_value(
-                    SecretId=secret_name
-                )
-                if 'SecretString' in get_secret_value_response:
-                    secrets = json.loads(get_secret_value_response['SecretString'])
-                    self._config.update(secrets)
-                elif 'SecretBinary' in get_secret_value_response:
-                    import base64
-                    decoded_binary_secret = base64.b64decode(get_secret_value_response['SecretBinary'])
-                    secrets = json.loads(decoded_binary_secret)
-                    self._config.update(secrets)
-            except (ClientError, Exception):
-                pass
 
     def get(self, key, default=None):
         val = self._config.get(key)
